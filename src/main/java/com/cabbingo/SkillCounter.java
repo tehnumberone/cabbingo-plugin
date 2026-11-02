@@ -3,11 +3,13 @@ package com.cabbingo;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -43,7 +45,21 @@ class SkillCounter
 		int left;
 	}
 
-	volatile List<Goal> goals = Collections.emptyList();
+	private volatile List<Goal> goals = Collections.emptyList();
+	// Sent since the server's goals last changed: it renews them only when a side finishes, so after a send that
+	// finished nothing its numbers still count those items as missing (21 of 30 logs sent, 2026-11-02).
+	private final Map<String, Integer> sent = new HashMap<>();
+	private String goalsRev;
+
+	synchronized void goals(List<Goal> goals, String rev)
+	{
+		if (!Objects.equals(rev, goalsRev))
+		{
+			sent.clear();
+			goalsRev = rev;
+		}
+		this.goals = goals;
+	}
 	private long wantedAt;
 	private boolean finishes;
 	// the gem the message before named, for the gem bag message right after it
@@ -68,6 +84,10 @@ class SkillCounter
 	private int counted(Set<String> items)
 	{
 		int sum = 0;
+		for (Map.Entry<String, Integer> e : sent.entrySet())
+		{
+			sum += items.contains(e.getKey()) ? e.getValue() : 0;
+		}
 		for (Map<String, Integer> skill : counts.values())
 		{
 			for (Map.Entry<String, Integer> e : skill.entrySet())
@@ -161,6 +181,7 @@ class SkillCounter
 	synchronized Map<String, Map<String, Integer>> take()
 	{
 		Map<String, Map<String, Integer>> taken = new LinkedHashMap<>(counts);
+		taken.values().forEach(items -> items.forEach((name, n) -> sent.merge(name.toLowerCase(Locale.ROOT), n, Integer::sum)));
 		counts.clear();
 		wantedAt = 0;
 		finishes = false;

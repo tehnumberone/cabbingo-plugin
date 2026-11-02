@@ -63,7 +63,7 @@ public class SkillCounterTest
 	public void wantedItemsAreDueAMinuteAfterTheLastOne()
 	{
 		SkillCounter c = new SkillCounter();
-		c.goals = goals(0, "yew logs");
+		c.goals(goals(0, "yew logs"), "a");
 		long now = System.currentTimeMillis();
 		c.message("You get some logs.");
 		assertFalse(c.due(now + 60_000)); // nobody wants plain logs: the five minute batch
@@ -73,11 +73,19 @@ public class SkillCounterTest
 		c.take();
 		assertFalse(c.due(now + 120_000));
 		// the log that finishes a side goes out at once, counted over the side's logs together
-		c.goals = goals(2, "yew logs", "logs");
+		c.goals(goals(3, "yew logs", "logs"), "b");
 		c.message("You get some yew logs.");
 		assertFalse(c.due(System.currentTimeMillis()));
 		c.message("You get some logs.");
+		c.take(); // the five minute batch: the server's numbers stay as they were until a side finishes
+		c.goals(goals(3, "yew logs", "logs"), "b");
+		assertFalse(c.due(System.currentTimeMillis()));
+		c.message("You get some logs.");
 		assertTrue(c.due(System.currentTimeMillis()));
+		c.take();
+		c.goals(goals(3, "yew logs", "logs"), "c"); // new numbers: what was sent is in them
+		c.message("You get some logs.");
+		assertFalse(c.due(System.currentTimeMillis()));
 	}
 
 	private static List<SkillCounter.Goal> goals(int left, String... items)

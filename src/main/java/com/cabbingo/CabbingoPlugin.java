@@ -226,7 +226,7 @@ public class CabbingoPlugin extends Plugin
 	{
 		sendKills(kills.take());
 		wants = null;
-		skills.goals = Collections.emptyList();
+		skills.goals(Collections.emptyList(), null);
 		petTicks = -1;
 		// popups not shown yet come again at the next start
 		unsee(popups.stream().map(p -> p.id).filter(Objects::nonNull).toArray(String[]::new));
@@ -487,7 +487,7 @@ public class CabbingoPlugin extends Plugin
 		if (url == null)
 		{
 			wants = null;
-			skills.goals = Collections.emptyList();
+			skills.goals(Collections.emptyList(), null);
 			return;
 		}
 		Request request = new Request.Builder().url(url).build();
@@ -506,7 +506,7 @@ public class CabbingoPlugin extends Plugin
 				{
 					Wants w = response.isSuccessful() ? gson.fromJson(response.body().charStream(), Wants.class) : null;
 					wants = w;
-					skills.goals = w.skill == null ? Collections.emptyList() : w.skill;
+					skills.goals(w == null || w.skill == null ? Collections.emptyList() : w.skill, w == null ? null : w.rev);
 					if (w != null)
 					{
 						welcome(w);
