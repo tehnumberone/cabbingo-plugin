@@ -156,6 +156,7 @@ public class CabbingoPlugin extends Plugin
 		String name; // the bingo's title
 		String mode; // the game mode; none (an older server) is Bingo
 		Set<String> items = new HashSet<>();
+		Set<String> uniques = new HashSet<>(); // every boss's uniques: a kill with one never joins a batch
 		Map<String, Double> sources;
 		double big;
 		List<Finished> finished = new ArrayList<>(); // the tile sides the team finished
@@ -682,6 +683,7 @@ public class CabbingoPlugin extends Plugin
 		List<KillBatch.Item> items = new ArrayList<>();
 		long value = 0;
 		boolean wanted = false;
+		boolean unique = false;
 		for (ItemStack stack : stacks)
 		{
 			String name = itemManager.getItemComposition(stack.getId()).getName();
@@ -689,13 +691,15 @@ public class CabbingoPlugin extends Plugin
 			items.add(new KillBatch.Item(stack.getId(), name, price, stack.getQuantity()));
 			value += price * stack.getQuantity();
 			wanted |= w.items.contains(name.toLowerCase(Locale.ROOT));
+			unique |= w.uniques.contains(name.toLowerCase(Locale.ROOT));
 		}
 		// A screenshot where the server sends the post to the team's channel, or a tile counts its value.
 		String sourceKey = category.equals("PLAYER") ? "pvp" : source.trim().toLowerCase(Locale.ROOT);
 		Double min = w.sources.get(sourceKey);
 		boolean shot = wanted || value >= w.big || (min != null && value >= min);
-		// Such a kill, and PvP, goes alone, after the open batch; any other joins the batch of its source.
-		if (shot || category.equals("PLAYER"))
+		// Such a kill, a unique and PvP go alone (the whole drop, its own proof), after the open batch; any other kill
+		// joins the batch of its source.
+		if (shot || unique || category.equals("PLAYER"))
 		{
 			sendKills(kills.take());
 			sendLoot(rsn, source, category, items, 1, shot);
