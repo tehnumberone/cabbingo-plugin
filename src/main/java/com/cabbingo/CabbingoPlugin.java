@@ -12,8 +12,9 @@ import java.io.IOException;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Queue;
@@ -122,13 +123,6 @@ public class CabbingoPlugin extends Plugin
 	// Skilling tiles: what the player gathered or made, sent every few minutes (SkillCounter). XP per skill as last seen,
 	// the skills that gained XP this tick and last, and the backpack as it was and what it gained a tick ago.
 	private final SkillCounter skills = new SkillCounter();
-	{
-		skills.wanted = name ->
-		{
-			Wants w = wants;
-			return w == null ? -1 : w.skill.getOrDefault(name.toLowerCase(Locale.ROOT), -1);
-		};
-	}
 	// Kills of one source go out together, a minute after the first (KillBatch)
 	private final KillBatch kills = new KillBatch();
 	private final Map<String, Integer> skillXp = new HashMap<>();
@@ -181,9 +175,9 @@ public class CabbingoPlugin extends Plugin
 		String name; // the bingo's title
 		String mode; // the game mode; none (an older server) is Bingo
 		Set<String> items = new HashSet<>();
-		// the items of open Skilling sides, each with how many more finish a side (0: never alone). Only skill counts
-		// go to them, never a kill (2026-11-03).
-		Map<String, Integer> skill = new HashMap<>();
+		// the items of open Skilling sides, in groups with how many more finish a side (SkillCounter.Goal). Only skill
+		// counts go to them, never a kill (2026-11-03).
+		List<SkillCounter.Goal> skill = new ArrayList<>();
 		Set<String> uniques = new HashSet<>(); // every boss's uniques: a kill with one never joins a batch
 		Map<String, Double> sources;
 		double big;
@@ -232,6 +226,7 @@ public class CabbingoPlugin extends Plugin
 	{
 		sendKills(kills.take());
 		wants = null;
+		skills.goals = Collections.emptyList();
 		petTicks = -1;
 		// popups not shown yet come again at the next start
 		unsee(popups.stream().map(p -> p.id).filter(Objects::nonNull).toArray(String[]::new));
@@ -492,6 +487,7 @@ public class CabbingoPlugin extends Plugin
 		if (url == null)
 		{
 			wants = null;
+			skills.goals = Collections.emptyList();
 			return;
 		}
 		Request request = new Request.Builder().url(url).build();
@@ -510,6 +506,7 @@ public class CabbingoPlugin extends Plugin
 				{
 					Wants w = response.isSuccessful() ? gson.fromJson(response.body().charStream(), Wants.class) : null;
 					wants = w;
+					skills.goals = w.skill == null ? Collections.emptyList() : w.skill;
 					if (w != null)
 					{
 						welcome(w);

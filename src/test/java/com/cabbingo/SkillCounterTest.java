@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import org.junit.Test;
 
@@ -61,7 +62,7 @@ public class SkillCounterTest
 	public void wantedItemsAreDueAMinuteAfterTheLastOne()
 	{
 		SkillCounter c = new SkillCounter();
-		c.wanted = name -> name.equals("Yew logs") ? 0 : -1;
+		c.goals = goals(0, "yew logs");
 		long now = System.currentTimeMillis();
 		c.message("You get some logs.");
 		assertFalse(c.due(now + 60_000)); // nobody wants plain logs: the five minute batch
@@ -70,11 +71,19 @@ public class SkillCounterTest
 		assertTrue(c.due(System.currentTimeMillis() + 60_000));
 		c.take();
 		assertFalse(c.due(now + 120_000));
-		// the log that finishes a side goes out at once
-		c.wanted = name -> name.equals("Yew logs") ? 2 : -1;
+		// the log that finishes a side goes out at once, counted over the side's logs together
+		c.goals = goals(2, "yew logs", "logs");
 		c.message("You get some yew logs.");
 		assertFalse(c.due(System.currentTimeMillis()));
-		c.message("You get some yew logs.");
+		c.message("You get some logs.");
 		assertTrue(c.due(System.currentTimeMillis()));
+	}
+
+	private static List<SkillCounter.Goal> goals(int left, String... items)
+	{
+		SkillCounter.Goal goal = new SkillCounter.Goal();
+		goal.items.addAll(Arrays.asList(items));
+		goal.left = left;
+		return Collections.singletonList(goal);
 	}
 }

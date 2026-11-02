@@ -2,11 +2,13 @@ package com.cabbingo;
 
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.ToIntFunction;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -31,9 +33,16 @@ class SkillCounter
 	private static final Pattern GEM_BAG = Pattern.compile("You put it (?:straight )?into your (?:open )?gem (?:bag|sack)\\.");
 
 	private final Map<String, Map<String, Integer>> counts = new LinkedHashMap<>();
-	// Items a Skilling tile wants: how many more of it finish a side (0: never alone), -1 for none. The counts go out a
-	// minute after the last of them was counted, not at the next batch, and at once when they finish a side.
-	volatile ToIntFunction<String> wanted = name -> -1;
+	// What Skilling tiles want, from the server: groups of items (lower case) and how many more of them, mixed, finish
+	// a side (0: never on their own). The counts go out a minute after the last wanted item, not at the next batch, and
+	// at once when a group has its number (2026-11-03).
+	static class Goal
+	{
+		Set<String> items = new HashSet<>();
+		int left;
+	}
+
+	volatile List<Goal> goals = Collections.emptyList();
 	private long wantedAt;
 	private boolean finishes;
 	// the gem the message before named, for the gem bag message right after it
@@ -43,13 +52,29 @@ class SkillCounter
 
 	synchronized void add(String skill, String item, int quantity)
 	{
-		int counted = counts.computeIfAbsent(skill, s -> new LinkedHashMap<>()).merge(item, quantity, Integer::sum);
-		int left = wanted.applyAsInt(item);
-		if (left >= 0)
+		counts.computeIfAbsent(skill, s -> new LinkedHashMap<>()).merge(item, quantity, Integer::sum);
+		String key = item.toLowerCase(Locale.ROOT);
+		for (Goal goal : goals)
 		{
-			wantedAt = System.currentTimeMillis();
-			finishes |= left > 0 && counted >= left;
+			if (goal.items.contains(key))
+			{
+				wantedAt = System.currentTimeMillis();
+				finishes |= goal.left > 0 && counted(goal.items) >= goal.left;
+			}
 		}
+	}
+
+	private int counted(Set<String> items)
+	{
+		int sum = 0;
+		for (Map<String, Integer> skill : counts.values())
+		{
+			for (Map.Entry<String, Integer> e : skill.entrySet())
+			{
+				sum += items.contains(e.getKey().toLowerCase(Locale.ROOT)) ? e.getValue() : 0;
+			}
+		}
+		return sum;
 	}
 
 	// A side's last item, or a minute without a new wanted item since the last one: time to send.
