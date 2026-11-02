@@ -124,6 +124,8 @@ public class CabbingoPlugin extends Plugin
 			return w != null && w.items.contains(name.toLowerCase(Locale.ROOT));
 		};
 	}
+	// Kills of one source go out together, a minute after the first (KillBatch)
+	private final KillBatch kills = new KillBatch();
 	private final Map<String, Integer> skillXp = new HashMap<>();
 	private Set<String> xpNow = new HashSet<>();
 	private Set<String> xpBefore = new HashSet<>();
@@ -199,6 +201,7 @@ public class CabbingoPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		sendKills(kills.take());
 		wants = null;
 		petTicks = -1;
 		// popups not shown yet come again at the next start
@@ -241,6 +244,7 @@ public class CabbingoPlugin extends Plugin
 		}
 		else if (e.getGameState() == GameState.LOGIN_SCREEN || e.getGameState() == GameState.HOPPING)
 		{
+			sendKills(kills.take());
 			sendSkills();
 			backpack = null;
 			skillXp.clear();
@@ -609,6 +613,11 @@ public class CabbingoPlugin extends Plugin
 	public void onGameTick(GameTick e)
 	{
 		showPopup();
+		// a minute after its first kill, or once the bingo window has closed
+		if (kills.due(System.currentTimeMillis()) || !inBingo())
+		{
+			sendKills(kills.take());
+		}
 		String player = playing();
 		if (player != null)
 		{
@@ -670,33 +679,64 @@ public class CabbingoPlugin extends Plugin
 			return;
 		}
 		Wants w = wants;
-		JsonArray items = new JsonArray();
-		StringBuilder lines = new StringBuilder();
+		List<KillBatch.Item> items = new ArrayList<>();
 		long value = 0;
 		boolean wanted = false;
 		for (ItemStack stack : stacks)
 		{
 			String name = itemManager.getItemComposition(stack.getId()).getName();
 			long price = itemManager.getItemPrice(stack.getId());
-			JsonObject item = new JsonObject();
-			item.addProperty("id", stack.getId());
-			item.addProperty("name", name);
-			item.addProperty("quantity", stack.getQuantity());
-			item.addProperty("priceEach", price);
-			items.add(item);
+			items.add(new KillBatch.Item(stack.getId(), name, price, stack.getQuantity()));
 			value += price * stack.getQuantity();
 			wanted |= w.items.contains(name.toLowerCase(Locale.ROOT));
-			lines.append('\n').append(stack.getQuantity()).append(" x ").append(name);
 		}
-		JsonObject extra = new JsonObject();
-		extra.addProperty("source", source);
-		extra.addProperty("category", category);
-		extra.add("items", items);
 		// A screenshot where the server sends the post to the team's channel, or a tile counts its value.
 		String sourceKey = category.equals("PLAYER") ? "pvp" : source.trim().toLowerCase(Locale.ROOT);
 		Double min = w.sources.get(sourceKey);
 		boolean shot = wanted || value >= w.big || (min != null && value >= min);
-		String content = "**" + rsn + "**: " + source + " (" + String.format(Locale.ROOT, "%,d", value) + " gp)" + lines;
+		// Such a kill, and PvP, goes alone, after the open batch; any other joins the batch of its source.
+		if (shot || category.equals("PLAYER"))
+		{
+			sendKills(kills.take());
+			sendLoot(rsn, source, category, items, 1, shot);
+		}
+		else
+		{
+			sendKills(kills.add(rsn, source, category, items, System.currentTimeMillis()));
+		}
+	}
+
+	private void sendKills(KillBatch.Batch b)
+	{
+		if (b != null)
+		{
+			sendLoot(b.rsn, b.source, b.category, new ArrayList<>(b.items.values()), b.kills, false);
+		}
+	}
+
+	// extra.kills: how many kills the items are from, their stacks added up (1 for a single kill)
+	private void sendLoot(String rsn, String source, String category, List<KillBatch.Item> items, int n, boolean shot)
+	{
+		JsonArray list = new JsonArray();
+		StringBuilder lines = new StringBuilder();
+		long value = 0;
+		for (KillBatch.Item i : items)
+		{
+			JsonObject item = new JsonObject();
+			item.addProperty("id", i.id);
+			item.addProperty("name", i.name);
+			item.addProperty("quantity", i.quantity);
+			item.addProperty("priceEach", i.price);
+			list.add(item);
+			value += i.price * i.quantity;
+			lines.append('\n').append(i.quantity).append(" x ").append(i.name);
+		}
+		JsonObject extra = new JsonObject();
+		extra.addProperty("source", source);
+		extra.addProperty("category", category);
+		extra.addProperty("kills", n);
+		extra.add("items", list);
+		String content = "**" + rsn + "**: " + source + (n > 1 ? " x" + n : "") + " (" + String.format(Locale.ROOT, "%,d", value) + " gp)" + lines;
 		// (Discord takes at most 2,000 characters)
 		if (content.length() > 1900)
 		{
