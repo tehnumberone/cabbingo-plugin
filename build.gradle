@@ -38,7 +38,8 @@ tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = pluginMainClass
 
-	jvmArgs "-ea"
+	// (the RuneLite launcher opens this too; without it RuneLite logs a harmless InaccessibleObjectException at start)
+	jvmArgs "-ea", "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED"
 	args "--developer-mode", "--debug"
 }
 
