@@ -26,7 +26,8 @@ class SkillCounter
 		"Cooking", "Crafting", "Farming", "Fishing", "Fletching", "Herblore", "Hunter", "Mining", "Runecraft", "Smithing", "Woodcutting");
 	private static final List<String> BY_MESSAGE = Arrays.asList("Woodcutting", "Fishing");
 	private static final Pattern LOGS = Pattern.compile("You get (?:some|an?) ((?:[\\w' -]+ )?logs?)\\.");
-	private static final Pattern FISH = Pattern.compile("You catch (an?|some|\\d+) ([\\w' -]+?)[.!]");
+	// "You catch a shark!", and since 2026-11-02 also "You catch a raw trout" (no stop, the item's own name)
+	private static final Pattern FISH = Pattern.compile("You catch (an?|some|\\d+) ([\\w' -]+?)[.!]?");
 	private static final Pattern GEM = Pattern.compile("You just (?:mined|found) (?:a piece of|an?) ([\\w ]+)!");
 	// "You put it into your gem bag." (tried in the game 2026-11-02), "... straight into your open gem bag." (other plugins); the gem
 	// sack takes opal, jade and red topaz too (user, 2026-11-02)
@@ -111,7 +112,7 @@ class SkillCounter
 			String caught = m.group(2).toLowerCase(Locale.ROOT);
 			int quantity = m.group(1).matches("\\d+") ? Integer.parseInt(m.group(1)) : 1;
 			// (barbarian fishing's leaping fish have no "Raw" in their name)
-			fish = caught.startsWith("leaping ") ? capitalize(caught) : "Raw " + caught;
+			fish = caught.startsWith("leaping ") || caught.startsWith("raw ") ? capitalize(caught) : "Raw " + caught;
 			add("Fishing", fish, quantity);
 			return true;
 		}

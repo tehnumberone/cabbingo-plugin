@@ -22,6 +22,7 @@ public class SkillCounterTest
 		assertTrue(c.message("You catch a shark!"));
 		assertTrue(c.message("You catch some shrimps."));
 		assertTrue(c.message("You catch a leaping trout."));
+		assertTrue(c.message("You catch a raw salmon"));
 		assertTrue(c.message("You catch 6 karambwanji."));
 		assertTrue(c.message("Rada's blessing enabled you to catch an extra fish.")); // one more of the last one
 		assertFalse(c.message("You swing your axe at the tree."));
@@ -32,7 +33,7 @@ public class SkillCounterTest
 
 		Map<String, Map<String, Integer>> taken = c.take();
 		assertEquals("{Yew logs=2, Logs=1}", taken.get("Woodcutting").toString());
-		assertEquals("{Raw shark=1, Raw shrimps=1, Leaping trout=1, Raw karambwanji=7}", taken.get("Fishing").toString());
+		assertEquals("{Raw shark=1, Raw shrimps=1, Leaping trout=1, Raw salmon=1, Raw karambwanji=7}", taken.get("Fishing").toString());
 		assertEquals("{Black d'hide body=1}", taken.get("Crafting").toString());
 		assertTrue(c.take().isEmpty());
 	}
