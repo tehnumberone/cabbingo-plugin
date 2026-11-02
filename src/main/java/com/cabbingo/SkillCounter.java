@@ -6,7 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.function.Predicate;
+import java.util.function.ToIntFunction;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -26,12 +26,15 @@ class SkillCounter
 	private static final Pattern LOGS = Pattern.compile("You get (?:some|an?) ((?:[\\w' -]+ )?logs?)\\.");
 	private static final Pattern FISH = Pattern.compile("You catch (an?|some|\\d+) ([\\w' -]+?)[.!]");
 	private static final Pattern GEM = Pattern.compile("You just (?:mined|found) (?:a piece of|an?) ([\\w ]+)!");
-	private static final String GEM_BAG = "You put it straight into your open gem bag.";
+	// "You put it into your gem bag." (tried in the game 2026-11-02); "... straight into your open gem bag." by other plugins
+	private static final Pattern GEM_BAG = Pattern.compile("You put it (?:straight )?into your (?:open )?gem bag\\.");
 
 	private final Map<String, Map<String, Integer>> counts = new LinkedHashMap<>();
-	// Items a tile wants: the counts go out a minute after the last of them was counted, not at the next batch.
-	volatile Predicate<String> wanted = name -> false;
+	// Items a Skilling tile wants: how many more of it finish a side (0: never alone), -1 for none. The counts go out a
+	// minute after the last of them was counted, not at the next batch, and at once when they finish a side.
+	volatile ToIntFunction<String> wanted = name -> -1;
 	private long wantedAt;
+	private boolean finishes;
 	// the gem the message before named, for the gem bag message right after it
 	private String gem;
 	// the fish last caught: an extra one (Rada's blessing and the like) does not say which (tried in the game 2026-11-02)
@@ -39,17 +42,19 @@ class SkillCounter
 
 	synchronized void add(String skill, String item, int quantity)
 	{
-		counts.computeIfAbsent(skill, s -> new LinkedHashMap<>()).merge(item, quantity, Integer::sum);
-		if (wanted.test(item))
+		int counted = counts.computeIfAbsent(skill, s -> new LinkedHashMap<>()).merge(item, quantity, Integer::sum);
+		int left = wanted.applyAsInt(item);
+		if (left >= 0)
 		{
 			wantedAt = System.currentTimeMillis();
+			finishes |= left > 0 && counted >= left;
 		}
 	}
 
-	// A minute without a new wanted item since the last one: time to send.
+	// A side's last item, or a minute without a new wanted item since the last one: time to send.
 	synchronized boolean due(long now)
 	{
-		return wantedAt > 0 && now - wantedAt >= 60_000;
+		return finishes || (wantedAt > 0 && now - wantedAt >= 60_000);
 	}
 
 	// A game message that names a log, fish or bagged gem: counted, true.
@@ -63,7 +68,7 @@ class SkillCounter
 			gem = "Uncut " + m.group(1).toLowerCase(Locale.ROOT);
 			return false; // a gem in the backpack counts from there
 		}
-		if (text.equals(GEM_BAG) && named != null)
+		if (named != null && GEM_BAG.matcher(text).matches())
 		{
 			add("Mining", named, 1);
 			return true;
@@ -131,6 +136,7 @@ class SkillCounter
 		Map<String, Map<String, Integer>> taken = new LinkedHashMap<>(counts);
 		counts.clear();
 		wantedAt = 0;
+		finishes = false;
 		return taken;
 	}
 

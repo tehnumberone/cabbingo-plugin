@@ -126,7 +126,7 @@ public class CabbingoPlugin extends Plugin
 		skills.wanted = name ->
 		{
 			Wants w = wants;
-			return w != null && w.items.contains(name.toLowerCase(Locale.ROOT));
+			return w == null ? -1 : w.skill.getOrDefault(name.toLowerCase(Locale.ROOT), -1);
 		};
 	}
 	// Kills of one source go out together, a minute after the first (KillBatch)
@@ -181,6 +181,9 @@ public class CabbingoPlugin extends Plugin
 		String name; // the bingo's title
 		String mode; // the game mode; none (an older server) is Bingo
 		Set<String> items = new HashSet<>();
+		// the items of open Skilling sides, each with how many more finish a side (0: never alone). Only skill counts
+		// go to them, never a kill (2026-11-03).
+		Map<String, Integer> skill = new HashMap<>();
 		Set<String> uniques = new HashSet<>(); // every boss's uniques: a kill with one never joins a batch
 		Map<String, Double> sources;
 		double big;
@@ -677,11 +680,12 @@ public class CabbingoPlugin extends Plugin
 			return;
 		}
 		// one after another, each with its sound; not over the game's own popup (collection log, League task) nor behind
-		// the "Click here to play" screen. Only what shows counts: an interface can stay loaded once it is gone (a
+		// the "Click here to play" screen, nor while a bank or other window is open (it would not show, only its sound:
+		// tried 2026-11-02). Only what shows counts: an interface can stay loaded once it is gone (a
 		// Blast Furnace popup waited for minutes, 2026-11-02).
 		long now = System.currentTimeMillis();
 		String busy = popupNode != null ? "ours" : showing(POPUP, 1) ? "game popup" : showing(InterfaceID.WELCOME_SCREEN, 0) ? "welcome screen"
-			: now < soundUntil ? "sound" : null;
+			: modalOpen() ? "open window" : now < soundUntil ? "sound" : null;
 		if (busy != null)
 		{
 			if (popupWaiting == 0)
@@ -727,6 +731,19 @@ public class CabbingoPlugin extends Plugin
 			popupNode = null;
 			return true;
 		});
+	}
+
+	// a window in the middle of the screen (bank, shop, Blast Furnace bars): the game's own windows the player closes
+	private boolean modalOpen()
+	{
+		for (WidgetNode node : client.getComponentTable())
+		{
+			if (node.getModalMode() == WidgetModalMode.MODAL_NOCLICKTHROUGH)
+			{
+				return true;
+			}
+		}
+		return false;
 	}
 
 	private boolean showing(int group, int child)

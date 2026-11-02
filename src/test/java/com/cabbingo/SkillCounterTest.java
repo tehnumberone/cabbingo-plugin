@@ -49,17 +49,19 @@ public class SkillCounterTest
 		// a gem counts when the bag message follows its own message, never from an older one
 		assertFalse(c.message("You just mined a piece of Jade!"));
 		assertTrue(c.message("You put it straight into your open gem bag."));
+		assertFalse(c.message("You just mined a Sapphire!"));
+		assertTrue(c.message("You put it into your gem bag."));
 		assertFalse(c.message("You just found a Diamond!"));
 		assertFalse(c.message("You manage to mine some coal."));
 		assertFalse(c.message("You put it straight into your open gem bag."));
-		assertEquals("{Mining={Uncut jade=1}}", c.take().toString());
+		assertEquals("{Mining={Uncut jade=1, Uncut sapphire=1}}", c.take().toString());
 	}
 
 	@Test
 	public void wantedItemsAreDueAMinuteAfterTheLastOne()
 	{
 		SkillCounter c = new SkillCounter();
-		c.wanted = "Yew logs"::equals;
+		c.wanted = name -> name.equals("Yew logs") ? 0 : -1;
 		long now = System.currentTimeMillis();
 		c.message("You get some logs.");
 		assertFalse(c.due(now + 60_000)); // nobody wants plain logs: the five minute batch
@@ -68,5 +70,11 @@ public class SkillCounterTest
 		assertTrue(c.due(System.currentTimeMillis() + 60_000));
 		c.take();
 		assertFalse(c.due(now + 120_000));
+		// the log that finishes a side goes out at once
+		c.wanted = name -> name.equals("Yew logs") ? 2 : -1;
+		c.message("You get some yew logs.");
+		assertFalse(c.due(System.currentTimeMillis()));
+		c.message("You get some yew logs.");
+		assertTrue(c.due(System.currentTimeMillis()));
 	}
 }
