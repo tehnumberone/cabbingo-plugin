@@ -26,8 +26,9 @@ class SkillCounter
 	private static final Pattern LOGS = Pattern.compile("You get (?:some|an?) ((?:[\\w' -]+ )?logs?)\\.");
 	private static final Pattern FISH = Pattern.compile("You catch (an?|some|\\d+) ([\\w' -]+?)[.!]");
 	private static final Pattern GEM = Pattern.compile("You just (?:mined|found) (?:a piece of|an?) ([\\w ]+)!");
-	// "You put it into your gem bag." (tried in the game 2026-11-02); "... straight into your open gem bag." by other plugins
-	private static final Pattern GEM_BAG = Pattern.compile("You put it (?:straight )?into your (?:open )?gem bag\\.");
+	// "You put it into your gem bag." (tried in the game 2026-11-02), "... straight into your open gem bag." (other plugins); the gem
+	// sack takes opal, jade and red topaz too (user, 2026-11-02)
+	private static final Pattern GEM_BAG = Pattern.compile("You put it (?:straight )?into your (?:open )?gem (?:bag|sack)\\.");
 
 	private final Map<String, Map<String, Integer>> counts = new LinkedHashMap<>();
 	// Items a Skilling tile wants: how many more of it finish a side (0: never alone), -1 for none. The counts go out a
