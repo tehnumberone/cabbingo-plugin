@@ -24,6 +24,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
 import javax.imageio.ImageWriteParam;
@@ -78,6 +79,8 @@ import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
 
 /**
  * Sends every kill, PvP kill and pet of a bingo player to their Cabbingo team. The server counts it for the
@@ -116,6 +119,12 @@ public class CabbingoPlugin extends Plugin
 
 	// What the team wants, from the server. Null until it answered (no key, a wrong key, offline).
 	private volatile Wants wants;
+	// The team's live line (the server's TeamPush): "finished" when the team finishes a side, so a teammate's popup comes
+	// at once (user, 2026-11-02). Open while logged in during the bingo; the minute poll stays for when it is down.
+	private OkHttpClient pushHttp;
+	private WebSocket push;
+	private long pushAgain; // the next try after it dropped or could not open
+	private long pushWait = 60_000; // doubles per failed try, up to half an hour
 	// A pet message waits a few ticks for the collection log line that names the pet.
 	private int petTicks = -1;
 	private String petName;
@@ -225,6 +234,7 @@ public class CabbingoPlugin extends Plugin
 	protected void shutDown()
 	{
 		sendKills(kills.take());
+		closePush();
 		wants = null;
 		skills.goals(Collections.emptyList(), null);
 		petTicks = -1;
@@ -249,6 +259,7 @@ public class CabbingoPlugin extends Plugin
 				finishedSeen = null;
 			}
 			configManager.unsetConfiguration(CabbingoConfig.GROUP, SEEN);
+			closePush();
 			fetchWants();
 		}
 		else if (SOUND_KEYS.contains(e.getKey()))
@@ -268,6 +279,7 @@ public class CabbingoPlugin extends Plugin
 		}
 		else if (e.getGameState() == GameState.LOGIN_SCREEN || e.getGameState() == GameState.HOPPING)
 		{
+			closePush();
 			sendKills(kills.take());
 			sendSkills();
 			backpack = null;
@@ -463,8 +475,8 @@ public class CabbingoPlugin extends Plugin
 		xpNow = new HashSet<>();
 	}
 
-	// ponytail: a poll a minute per logged-in player, so a captain's approval pops up within a minute. On the loot
-	// account that is ~1.5k requests a day per player; a push channel if that ever matters.
+	// A poll a minute per logged-in player, for when the live line (openPush) is down: a finish still pops up within a
+	// minute. On the loot account that is ~1.5k requests a day per player.
 	@Schedule(period = 1, unit = ChronoUnit.MINUTES, asynchronous = true)
 	public void refreshWants()
 	{
@@ -472,6 +484,71 @@ public class CabbingoPlugin extends Plugin
 		{
 			fetchWants();
 		}
+	}
+
+	private synchronized void openPush()
+	{
+		long now = System.currentTimeMillis();
+		HttpUrl url = url();
+		if (push != null || now < pushAgain || url == null)
+		{
+			return;
+		}
+		if (pushHttp == null)
+		{
+			pushHttp = http.newBuilder().pingInterval(30, TimeUnit.SECONDS).build();
+		}
+		Request request = new Request.Builder().url(url.newBuilder().addPathSegment("push").build()).build();
+		push = pushHttp.newWebSocket(request, new WebSocketListener()
+		{
+			@Override
+			public void onOpen(WebSocket ws, Response response)
+			{
+				pushWait = 60_000;
+			}
+
+			@Override
+			public void onMessage(WebSocket ws, String text)
+			{
+				if ("finished".equals(text))
+				{
+					fetchWants();
+				}
+			}
+
+			@Override
+			public void onClosed(WebSocket ws, int code, String reason)
+			{
+				dropped(ws);
+			}
+
+			@Override
+			public void onFailure(WebSocket ws, Throwable t, Response response)
+			{
+				log.debug("Cabbingo: live line dropped", t);
+				dropped(ws);
+			}
+		});
+	}
+
+	private synchronized void dropped(WebSocket ws)
+	{
+		if (push == ws)
+		{
+			push = null;
+			pushAgain = System.currentTimeMillis() + pushWait;
+			pushWait = Math.min(pushWait * 2, 30 * 60_000);
+		}
+	}
+
+	private synchronized void closePush()
+	{
+		if (push != null)
+		{
+			push.close(1000, null);
+			push = null;
+		}
+		pushAgain = 0;
 	}
 
 	// The URL the player pasted, as Dink and Loot Logger take a webhook: this plugin sends nowhere else. Null when it is
@@ -783,6 +860,10 @@ public class CabbingoPlugin extends Plugin
 	public void onGameTick(GameTick e)
 	{
 		showPopup();
+		if (inBingo())
+		{
+			openPush();
+		}
 		// a minute after its first kill, or once the bingo window has closed
 		if (kills.due(System.currentTimeMillis()) || !inBingo())
 		{
