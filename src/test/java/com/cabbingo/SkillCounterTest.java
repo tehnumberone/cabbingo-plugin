@@ -22,6 +22,7 @@ public class SkillCounterTest
 		assertTrue(c.message("You catch some shrimps."));
 		assertTrue(c.message("You catch a leaping trout."));
 		assertTrue(c.message("You catch 6 karambwanji."));
+		assertTrue(c.message("Rada's blessing enabled you to catch an extra fish.")); // one more of the last one
 		assertFalse(c.message("You swing your axe at the tree."));
 		// a tick with Crafting XP: the backpack's gains count for Crafting
 		c.gained(Arrays.asList("Crafting"), Collections.singletonMap("Black d'hide body", 1));
@@ -30,9 +31,28 @@ public class SkillCounterTest
 
 		Map<String, Map<String, Integer>> taken = c.take();
 		assertEquals("{Yew logs=2, Logs=1}", taken.get("Woodcutting").toString());
-		assertEquals("{Raw shark=1, Raw shrimps=1, Leaping trout=1, Raw karambwanji=6}", taken.get("Fishing").toString());
+		assertEquals("{Raw shark=1, Raw shrimps=1, Leaping trout=1, Raw karambwanji=7}", taken.get("Fishing").toString());
 		assertEquals("{Black d'hide body=1}", taken.get("Crafting").toString());
 		assertTrue(c.take().isEmpty());
+	}
+
+	@Test
+	public void readsHerbPatchesAndCountsTheGemBag()
+	{
+		assertEquals("Grimy ranarr weed", SkillCounter.herbAt(36));
+		assertEquals("Grimy ranarr weed", SkillCounter.herbAt(38));
+		assertEquals("Grimy huasca", SkillCounter.herbAt(64));
+		assertEquals("Grimy torstol", SkillCounter.herbAt(109));
+		assertEquals(null, SkillCounter.herbAt(3)); // weeded and empty
+		assertEquals(null, SkillCounter.herbAt(35)); // ranarr still growing
+		SkillCounter c = new SkillCounter();
+		// a gem counts when the bag message follows its own message, never from an older one
+		assertFalse(c.message("You just mined a piece of Jade!"));
+		assertTrue(c.message("You put it straight into your open gem bag."));
+		assertFalse(c.message("You just found a Diamond!"));
+		assertFalse(c.message("You manage to mine some coal."));
+		assertFalse(c.message("You put it straight into your open gem bag."));
+		assertEquals("{Mining={Uncut jade=1}}", c.take().toString());
 	}
 
 	@Test

@@ -35,6 +35,10 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
+import net.runelite.api.GameObject;
+import net.runelite.api.ObjectComposition;
+import net.runelite.api.Tile;
+import net.runelite.api.WorldView;
 import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.WidgetNode;
@@ -43,6 +47,7 @@ import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.events.StatChanged;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetModalMode;
@@ -132,6 +137,23 @@ public class CabbingoPlugin extends Plugin
 	private Map<Integer, Integer> backpack;
 	private Map<String, Integer> backpackGained = new HashMap<>();
 	private volatile String skillRsn;
+	// Motherlode Mine sack and Blast Furnace dispenser (2026-11-02): ore taken from the sack and bars made in the furnace
+	// come without XP in that tick, so they count from the game's own counters (as RuneLite's own plugins read them).
+	private static final Set<Integer> MOTHERLODE = Set.of(14679, 14680, 14681, 14935, 14936, 14937, 15191, 15192, 15193);
+	private static final int BLAST_FURNACE = 7757;
+	private static final Map<Integer, String> FURNACE_BARS = Map.of(
+		VarbitID.BLAST_FURNACE_BRONZE_BARS, "Bronze bar", VarbitID.BLAST_FURNACE_IRON_BARS, "Iron bar",
+		VarbitID.BLAST_FURNACE_STEEL_BARS, "Steel bar", VarbitID.BLAST_FURNACE_MITHRIL_BARS, "Mithril bar",
+		VarbitID.BLAST_FURNACE_ADAMANTITE_BARS, "Adamantite bar", VarbitID.BLAST_FURNACE_RUNITE_BARS, "Runite bar",
+		VarbitID.BLAST_FURNACE_GOLD_BARS, "Gold bar", VarbitID.BLAST_FURNACE_SILVER_BARS, "Silver bar");
+	private int sackBefore = -1;
+	private int sackTicks;
+	private final Map<Integer, Integer> barsBefore = new HashMap<>();
+	// Herb patches (herb sack): the varbit of the herb patch last picked, the herb it had a tick ago, and the herb picked
+	// on the last tick with Farming XP (checked a tick later, once the backpack had its chance to get it).
+	private int herbVarbit = -1;
+	private String herbBefore;
+	private String herbOnXp;
 
 	// For the TempleOSRS update on logout: who played and their total XP when the session started (-1: none yet).
 	private String templeName;
@@ -144,6 +166,9 @@ public class CabbingoPlugin extends Plugin
 
 	// The game's own popup (the collection log's "New item"): interface 660 over the game view, started by script 3343.
 	private static final int POPUP = 660;
+	// our popup while it is open, and since when the next one waits (0: none waits)
+	private WidgetNode popupNode;
+	private long popupWaiting;
 	private static final int POPUP_SCRIPT = 3343;
 	private static final String SEEN = "seen";
 	private static final Set<String> SOUND_KEYS = Set.of("sound", "flipSound", "volume", "test", "testFlip");
@@ -248,6 +273,11 @@ public class CabbingoPlugin extends Plugin
 			sendKills(kills.take());
 			sendSkills();
 			backpack = null;
+			sackBefore = -1;
+			barsBefore.clear();
+			herbVarbit = -1;
+			herbBefore = null;
+			herbOnXp = null;
 			skillXp.clear();
 			updateTemple();
 		}
@@ -368,10 +398,37 @@ public class CabbingoPlugin extends Plugin
 		Map<Integer, Integer> now = backpack();
 		Set<String> around = new HashSet<>(xpBefore);
 		around.addAll(xpNow);
+		int region = client.getLocalPlayer() == null ? -1 : client.getLocalPlayer().getWorldLocation().getRegionID();
+		if (region == BLAST_FURNACE)
+		{
+			// bars count as the furnace makes them (with Smithing XP), so bars taken from the dispenser never count
+			boolean smithing = around.remove("Smithing");
+			FURNACE_BARS.forEach((varbit, bar) ->
+			{
+				int bars = client.getVarbitValue(varbit);
+				Integer before = barsBefore.put(varbit, bars);
+				if (before != null && bars > before && smithing)
+				{
+					skills.add("Smithing", bar, bars - before);
+				}
+			});
+		}
+		else
+		{
+			barsBefore.clear();
+		}
+		// the sack emptied a little: what the backpack gains this tick and the next came from it
+		int sack = client.getVarbitValue(VarbitID.MOTHERLODE_SACK_TRANSMIT);
+		if (MOTHERLODE.contains(region) && sackBefore >= 0 && sack < sackBefore)
+		{
+			sackTicks = 2;
+		}
+		sackBefore = sack;
 		if (!backpackGained.isEmpty() && !around.isEmpty())
 		{
 			skills.gained(around, backpackGained);
 		}
+		Map<String, Integer> gainedBefore = backpackGained;
 		backpackGained = new HashMap<>();
 		if (backpack != null)
 		{
@@ -380,10 +437,29 @@ public class CabbingoPlugin extends Plugin
 				int more = quantity - backpack.getOrDefault(id, 0);
 				if (more > 0 && itemManager.getItemComposition(id).getNote() == -1)
 				{
-					backpackGained.merge(itemManager.getItemComposition(id).getName(), more, Integer::sum);
+					String name = itemManager.getItemComposition(id).getName();
+					if (sackTicks > 0)
+					{
+						skills.add("Mining", name, more);
+					}
+					else
+					{
+						backpackGained.merge(name, more, Integer::sum);
+					}
 				}
 			});
 		}
+		sackTicks = Math.max(0, sackTicks - 1);
+		// A herb that went into an open herb sack: Farming XP a tick ago while the patch still had herbs, and nothing new in
+		// the backpack then or now (a grimy herb there counts from the backpack). The game says nothing (tried 2026-11-02).
+		// ponytail: one herb per tick with Farming XP; a tick-manipulated pick of two counts one
+		if (herbOnXp != null && gainedBefore.isEmpty() && backpackGained.isEmpty())
+		{
+			log.debug("Cabbingo: {} into the herb sack", herbOnXp);
+			skills.add("Farming", herbOnXp, 1);
+		}
+		herbOnXp = xpNow.contains("Farming") ? herbBefore : null;
+		herbBefore = herbVarbit < 0 ? null : SkillCounter.herbAt(client.getVarbitValue(herbVarbit));
 		backpack = now;
 		xpBefore = xpNow;
 		xpNow = new HashSet<>();
@@ -480,6 +556,53 @@ public class CabbingoPlugin extends Plugin
 	}
 
 	@Subscribe
+	public void onMenuOptionClicked(MenuOptionClicked e)
+	{
+		// "Pick Herbs": the patch's varbit says which herb it has (SkillCounter.herbAt). Any other click in the world (a
+		// walk, compost, a seed, another patch) forgets it: farming varbits are shared between areas and patches.
+		String action = e.getMenuAction().name();
+		if (!action.startsWith("GAME_OBJECT_") && !action.startsWith("NPC_") && !action.startsWith("GROUND_ITEM_")
+			&& !action.startsWith("WIDGET_TARGET_ON_") && !action.equals("WALK"))
+		{
+			return;
+		}
+		ObjectComposition patch = "Pick".equals(e.getMenuOption()) && action.startsWith("GAME_OBJECT_") ? patchAt(e) : null;
+		herbVarbit = patch == null ? -1 : patch.getVarbitId();
+		if (patch != null)
+		{
+			int value = client.getVarbitValue(herbVarbit);
+			log.debug("Cabbingo: pick {} (object {}), varbit {} = {}: {}", Text.removeTags(e.getMenuTarget()), e.getId(), herbVarbit, value, SkillCounter.herbAt(value));
+		}
+	}
+
+	// The patch behind a click, with its varbit: the menu may name the patch itself or what it shows now (a herb patch
+	// turns into "Herbs"), so the scene's object on that tile is asked as well.
+	private ObjectComposition patchAt(MenuOptionClicked e)
+	{
+		ObjectComposition def = client.getObjectDefinition(e.getId());
+		if (def != null && def.getVarbitId() != -1)
+		{
+			return def;
+		}
+		WorldView view = client.getTopLevelWorldView();
+		int x = e.getParam0(), y = e.getParam1();
+		if (view == null || x < 0 || y < 0 || x >= 104 || y >= 104)
+		{
+			return null;
+		}
+		Tile tile = view.getScene().getTiles()[view.getPlane()][x][y];
+		for (GameObject object : tile == null ? new GameObject[0] : tile.getGameObjects())
+		{
+			ObjectComposition c = object == null ? null : client.getObjectDefinition(object.getId());
+			if (c != null && c.getVarbitId() != -1)
+			{
+				return c;
+			}
+		}
+		return null;
+	}
+
+	@Subscribe
 	public void onChatMessage(ChatMessage e)
 	{
 		// logs and fish: their messages are SPAM (shown with the game filter off)
@@ -548,13 +671,30 @@ public class CabbingoPlugin extends Plugin
 	// The next popup, once the game shows none: the same one the collection log uses.
 	private void showPopup()
 	{
-		// not behind the "Click here to play" screen
-		// one after another, each with its sound
-		if (popups.isEmpty() || client.getWidget(POPUP, 1) != null || client.getWidget(InterfaceID.WELCOME_SCREEN, 0) != null
-			|| System.currentTimeMillis() < soundUntil)
+		if (popups.isEmpty())
 		{
+			popupWaiting = 0;
 			return;
 		}
+		// one after another, each with its sound; not over the game's own popup (collection log, League task) nor behind
+		// the "Click here to play" screen. Only what shows counts: an interface can stay loaded once it is gone (a
+		// Blast Furnace popup waited for minutes, 2026-11-02).
+		long now = System.currentTimeMillis();
+		String busy = popupNode != null ? "ours" : showing(POPUP, 1) ? "game popup" : showing(InterfaceID.WELCOME_SCREEN, 0) ? "welcome screen"
+			: now < soundUntil ? "sound" : null;
+		if (busy != null)
+		{
+			if (popupWaiting == 0)
+			{
+				popupWaiting = now;
+			}
+			else if (now - popupWaiting > 10_000 && (now - popupWaiting) % 10_000 < 600)
+			{
+				log.debug("Cabbingo: popup waits for {}", busy);
+			}
+			return;
+		}
+		popupWaiting = 0;
 		Popup next = popups.poll();
 		log.debug("Cabbingo: popup {}", next.text);
 		int parent = !client.isResized() ? WidgetUtil.packComponentId(548, 42)
@@ -568,16 +708,31 @@ public class CabbingoPlugin extends Plugin
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "", next.chat, null);
 		}
 		playSound(next.flip ? config.flipSound() : config.sound());
-		// closed again once it has played, or the next one could not open
+		// closed again once it has played (or after 20 s at most), or the next one could not open
+		popupNode = node;
 		clientThread.invokeLater(() ->
 		{
-			if (popup != null && popup.getWidth() > 0)
+			if (popup != null && popup.getWidth() > 0 && System.currentTimeMillis() - now < 20_000)
 			{
 				return false;
 			}
-			client.closeInterface(node, true);
+			try
+			{
+				client.closeInterface(node, true);
+			}
+			catch (IllegalArgumentException ex)
+			{
+				// the game closed it first ("WidgetNode is no longer valid"): nothing left to close
+			}
+			popupNode = null;
 			return true;
 		});
+	}
+
+	private boolean showing(int group, int child)
+	{
+		Widget w = client.getWidget(group, child);
+		return w != null && !w.isHidden() && w.getWidth() > 0;
 	}
 
 	/** On the client thread. */
