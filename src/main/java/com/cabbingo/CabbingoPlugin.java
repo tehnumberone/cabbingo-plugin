@@ -256,7 +256,13 @@ public class CabbingoPlugin extends Plugin
 		String name = templeName;
 		long gained = client.getOverallExperience() - templeXp;
 		templeName = null;
-		if (name == null || templeXp < 0 || gained <= 0 || !inBingo())
+		if (name == null || templeXp < 0 || !inBingo())
+		{
+			return;
+		}
+		// the server checks the skilling counts up to here against TempleOSRS once it has this update (cheat mark)
+		send(payload("LOGOUT", name, "", new JsonObject()), false);
+		if (gained <= 0)
 		{
 			return;
 		}
