@@ -70,6 +70,7 @@ import net.runelite.client.task.Schedule;
 import net.runelite.client.ui.DrawManager;
 import net.runelite.client.util.Text;
 import net.runelite.http.api.loottracker.LootRecordType;
+import okhttp3.CacheControl;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.HttpUrl;
@@ -567,7 +568,9 @@ public class CabbingoPlugin extends Plugin
 			skills.goals(Collections.emptyList(), null);
 			return;
 		}
-		Request request = new Request.Builder().url(url).build();
+		// never into RuneLite's disk cache: two clients on one computer asking at the same moment (a live line's
+		// "finished") failed to rename the same cache file, and that answer was lost (2026-11-03)
+		Request request = new Request.Builder().url(url).cacheControl(new CacheControl.Builder().noStore().build()).build();
 		http.newCall(request).enqueue(new Callback()
 		{
 			@Override
