@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -732,6 +733,11 @@ public class CabbingoPlugin extends Plugin
 				popups.add(new Popup(kind + " Complete!", text, chat, f.id.endsWith(":flip"), f.id));
 			}
 		}
+		// the welcome first, then tiles, then rows, then columns, queued ones too (user, 2026-11-03)
+		List<Popup> queued = new ArrayList<>(popups);
+		queued.sort(Comparator.comparingInt(p -> p.id == null ? 0 : p.id.startsWith("row:") ? 2 : p.id.startsWith("col:") ? 3 : 1));
+		popups.clear();
+		popups.addAll(queued);
 		log.debug("Cabbingo: finished {}, seen before {}", ids, finishedSeen);
 		if (!ids.equals(finishedSeen))
 		{
