@@ -949,7 +949,7 @@ public class CabbingoPlugin extends Plugin
 			long price = itemManager.getItemPrice(stack.getId());
 			items.add(new KillBatch.Item(stack.getId(), name, price, stack.getQuantity()));
 			value += price * stack.getQuantity();
-			wanted |= w.items.contains(name.toLowerCase(Locale.ROOT));
+			wanted |= w.items.contains(name.toLowerCase(Locale.ROOT).replaceFirst(" \\(uncharged\\)$", "")); // charged or not, as the server keys items
 			unique |= w.uniques.contains(name.toLowerCase(Locale.ROOT));
 		}
 		// A screenshot where the server sends the post to the team's channel, or a tile counts its value.
