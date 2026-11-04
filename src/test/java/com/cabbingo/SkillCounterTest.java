@@ -88,6 +88,26 @@ public class SkillCounterTest
 		assertFalse(c.due(System.currentTimeMillis()));
 	}
 
+	@Test
+	public void aMarkSendsAtOnceWithAScreenshot()
+	{
+		SkillCounter c = new SkillCounter();
+		List<SkillCounter.Goal> goals = goals(13, "grimy ranarr weed");
+		goals.get(0).marks = new int[] {10, 5, 0}; // 7 of 20: screenshots at 10, 15 and 20
+		c.goals(goals, "a");
+		c.add("Farming", "Grimy ranarr weed", 2);
+		assertFalse(c.due(System.currentTimeMillis()));
+		c.add("Farming", "Grimy ranarr weed", 2); // 11 of 20
+		assertTrue(c.due(System.currentTimeMillis()));
+		assertEquals(Collections.singleton("Farming"), c.takeShots());
+		c.take();
+		assertTrue(c.takeShots().isEmpty());
+		c.add("Farming", "Grimy ranarr weed", 3); // 14: none, the next is at 15
+		assertTrue(c.takeShots().isEmpty());
+		c.add("Farming", "Grimy ranarr weed", 6); // 20: two marks at once, one screenshot
+		assertEquals(Collections.singleton("Farming"), c.takeShots());
+	}
+
 	private static List<SkillCounter.Goal> goals(int left, String... items)
 	{
 		SkillCounter.Goal goal = new SkillCounter.Goal();

@@ -350,7 +350,13 @@ public class CabbingoPlugin extends Plugin
 	public void sendSkills()
 	{
 		String rsn = skillRsn;
-		Map<String, Map<String, Integer>> taken = skills.take();
+		Map<String, Map<String, Integer>> taken;
+		Set<String> shots;
+		synchronized (skills)
+		{
+			shots = skills.takeShots();
+			taken = skills.take();
+		}
 		if (rsn == null)
 		{
 			return;
@@ -370,7 +376,8 @@ public class CabbingoPlugin extends Plugin
 			JsonObject extra = new JsonObject();
 			extra.addProperty("skill", skill);
 			extra.add("items", list);
-			send(payload("SKILL", rsn, "**" + rsn + "**: " + skill + lines, extra), false);
+			// a screenshot at 25, 50, 75 and 100% of a tile: it goes to the team's channel, the tile's proof
+			send(payload("SKILL", rsn, "**" + rsn + "**: " + skill + lines, extra), shots.contains(skill));
 		});
 	}
 

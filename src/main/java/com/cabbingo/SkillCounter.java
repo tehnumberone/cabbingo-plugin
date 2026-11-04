@@ -39,10 +39,13 @@ class SkillCounter
 	// What Skilling tiles want, from the server: groups of items (lower case) and how many more of them, mixed, finish
 	// a side (0: never on their own). The counts go out a minute after the last wanted item, not at the next batch, and
 	// at once when a group has its number (2026-11-03).
+	// marks: the counts still to go at which a screenshot goes along, at 25, 50, 75 and 100% of the group (2026-11-04):
+	// the proof of a tile only the plugin counts. The send goes out at once then too.
 	static class Goal
 	{
 		Set<String> items = new HashSet<>();
 		int left;
+		int[] marks;
 	}
 
 	private volatile List<Goal> goals = Collections.emptyList();
@@ -69,16 +72,39 @@ class SkillCounter
 
 	synchronized void add(String skill, String item, int quantity)
 	{
-		counts.computeIfAbsent(skill, s -> new LinkedHashMap<>()).merge(item, quantity, Integer::sum);
 		String key = item.toLowerCase(Locale.ROOT);
+		Map<Goal, Integer> before = new HashMap<>();
 		for (Goal goal : goals)
 		{
 			if (goal.items.contains(key))
 			{
-				wantedAt = System.currentTimeMillis();
-				finishes |= goal.left > 0 && counted(goal.items) >= goal.left;
+				before.put(goal, counted(goal.items));
 			}
 		}
+		counts.computeIfAbsent(skill, s -> new LinkedHashMap<>()).merge(item, quantity, Integer::sum);
+		before.forEach((goal, had) ->
+		{
+			wantedAt = System.currentTimeMillis();
+			int now = counted(goal.items);
+			finishes |= goal.left > 0 && now >= goal.left;
+			for (int mark : goal.marks == null ? new int[0] : goal.marks)
+			{
+				if (had < goal.left - mark && now >= goal.left - mark)
+				{
+					shots.add(skill);
+				}
+			}
+		});
+	}
+
+	// The skills whose next send takes a screenshot along (a mark was reached); empty again afterwards.
+	private final Set<String> shots = new HashSet<>();
+
+	synchronized Set<String> takeShots()
+	{
+		Set<String> taken = new HashSet<>(shots);
+		shots.clear();
+		return taken;
 	}
 
 	private int counted(Set<String> items)
@@ -98,10 +124,10 @@ class SkillCounter
 		return sum;
 	}
 
-	// A side's last item, or a minute without a new wanted item since the last one: time to send.
+	// A side's last item, a mark, or a minute without a new wanted item since the last one: time to send.
 	synchronized boolean due(long now)
 	{
-		return finishes || (wantedAt > 0 && now - wantedAt >= 60_000);
+		return finishes || !shots.isEmpty() || (wantedAt > 0 && now - wantedAt >= 60_000);
 	}
 
 	// A game message that names a log, fish or bagged gem: counted, true.
