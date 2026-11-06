@@ -136,6 +136,9 @@ public class CabbingoPlugin extends Plugin
 	private final SkillCounter skills = new SkillCounter();
 	// Kills of one source go out together, a minute after the first (KillBatch)
 	private final KillBatch kills = new KillBatch();
+	// Kill count tiles: the kills that kept to a tile's food rule (KillRules), and who made them
+	private final KillRules killRules = new KillRules();
+	private volatile String kcRsn;
 	private final Map<String, Integer> skillXp = new HashMap<>();
 	private Set<String> xpNow = new HashSet<>();
 	private Set<String> xpBefore = new HashSet<>();
@@ -193,6 +196,7 @@ public class CabbingoPlugin extends Plugin
 		Map<String, Double> sources;
 		double big;
 		List<Finished> finished = new ArrayList<>(); // the tile sides the team finished
+		List<KillRules.Goal> kc = new ArrayList<>(); // kill count sides still open, with their food rules (2026-11-06)
 		String rev; // the server's fingerprint of all this; every post's answer carries the current one (X-Rev)
 	}
 
@@ -236,6 +240,7 @@ public class CabbingoPlugin extends Plugin
 	protected void shutDown()
 	{
 		sendKills(kills.take());
+		sendKc();
 		closePush();
 		wants = null;
 		skills.goals(Collections.emptyList(), null);
@@ -283,6 +288,8 @@ public class CabbingoPlugin extends Plugin
 		{
 			closePush();
 			sendKills(kills.take());
+			sendKc();
+			killRules.forgetEaten();
 			sendSkills();
 			backpack = null;
 			sackBefore = -1;
@@ -646,6 +653,11 @@ public class CabbingoPlugin extends Plugin
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked e)
 	{
+		// food eaten during a kill counts for a kill count tile's food rule, like food in the backpack
+		if ("Eat".equals(e.getMenuOption()))
+		{
+			killRules.ate(Text.removeTags(e.getMenuTarget()));
+		}
 		// "Pick Herbs": the patch's varbit says which herb it has (SkillCounter.herbAt). Any other click in the world (a
 		// walk, compost, a seed, another patch) forgets it: farming varbits are shared between areas and patches.
 		String action = e.getMenuAction().name();
@@ -885,6 +897,10 @@ public class CabbingoPlugin extends Plugin
 		{
 			sendKills(kills.take());
 		}
+		if (killRules.due(System.currentTimeMillis()))
+		{
+			sendKc();
+		}
 		String player = playing();
 		if (player != null)
 		{
@@ -941,11 +957,19 @@ public class CabbingoPlugin extends Plugin
 	private void loot(String source, String category, Collection<ItemStack> stacks)
 	{
 		String rsn = playing();
-		if (rsn == null || source == null || stacks.isEmpty())
+		if (rsn == null || source == null)
 		{
 			return;
 		}
 		Wants w = wants;
+		if (w != null && w.kc != null && !w.kc.isEmpty() && !category.equals("PLAYER"))
+		{
+			checkKill(rsn, source, w.kc);
+		}
+		if (stacks.isEmpty())
+		{
+			return;
+		}
 		List<KillBatch.Item> items = new ArrayList<>();
 		long value = 0;
 		boolean wanted = false;
@@ -974,6 +998,43 @@ public class CabbingoPlugin extends Plugin
 		{
 			sendKills(kills.add(rsn, source, category, items, System.currentTimeMillis()));
 		}
+	}
+
+	// A kill of a kill count tile's monster: the backpack now and what was eaten since the last kill, against each tile's
+	// food rule. A kill that broke one is said in the chat and never sent for that tile (user, 2026-11-06).
+	private void checkKill(String rsn, String source, List<KillRules.Goal> goals)
+	{
+		List<KillRules.Carried> backpack = new ArrayList<>();
+		ItemContainer inv = client.getItemContainer(InventoryID.INV);
+		for (Item item : inv == null ? new Item[0] : inv.getItems())
+		{
+			if (item.getId() <= 0)
+			{
+				continue;
+			}
+			net.runelite.api.ItemComposition c = itemManager.getItemComposition(item.getId());
+			backpack.add(new KillRules.Carried(c.getName(), Arrays.asList(c.getInventoryActions()).contains("Eat")));
+		}
+		kcRsn = rsn;
+		killRules.kill(goals, source, backpack, System.currentTimeMillis()).forEach((g, why) ->
+			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+				"<col=ff0000>The kill is invalidated for the tile: " + g.title + "</col> (" + why + ")", null));
+	}
+
+	// The kills that kept to their tile's food rule, per tile side: the server adds them to the tiles
+	private void sendKc()
+	{
+		Map<String, Integer> taken = killRules.take();
+		String rsn = kcRsn;
+		if (taken.isEmpty() || rsn == null)
+		{
+			return;
+		}
+		JsonObject counts = new JsonObject();
+		taken.forEach(counts::addProperty);
+		JsonObject extra = new JsonObject();
+		extra.add("kills", counts);
+		send(payload("KC", rsn, "", extra), false);
 	}
 
 	private void sendKills(KillBatch.Batch b)
