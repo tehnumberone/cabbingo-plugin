@@ -244,15 +244,7 @@ class KillRules
 	 */
 	synchronized Map<Goal, String> kill(List<Goal> goals, String source, Collection<Carried> backpack, Map<String, String> worn, List<Event> events, long time)
 	{
-		saw(worn, names(backpack));
-		List<String> eventLines = new ArrayList<>();
-		for (Event e : events)
-		{
-			if (time >= e.from && time < e.to)
-			{
-				broken(e, wornSeen, names(backpack), bagSeen).forEach(l -> eventLines.add(eventLine(l)));
-			}
-		}
+		List<String> eventLines = eventsBroken(events, worn, names(backpack), time);
 		Map<Goal, String> broke = new LinkedHashMap<>();
 		for (Goal g : goals)
 		{
@@ -285,11 +277,34 @@ class KillRules
 			}
 		}
 		eaten.clear();
-		// the next kill starts from what is worn and carried now
+		next(worn, names(backpack));
+		return broke;
+	}
+
+	/**
+	 * The rules of the random events running at time that the kill broke, with what is worn and carried now: one line
+	 * each, as eventLine says it. They hold for every tile, drops and kill counts alike (user, 2026-11-07).
+	 */
+	synchronized List<String> eventsBroken(List<Event> events, Map<String, String> worn, Collection<String> bag, long time)
+	{
+		saw(worn, bag);
+		List<String> out = new ArrayList<>();
+		for (Event e : events)
+		{
+			if (time >= e.from && time < e.to)
+			{
+				broken(e, wornSeen, bag, bagSeen).forEach(l -> out.add(eventLine(l)));
+			}
+		}
+		return out;
+	}
+
+	/** After a kill: the next one starts from what is worn and carried now. */
+	synchronized void next(Map<String, String> worn, Collection<String> bag)
+	{
 		wornSeen.clear();
 		bagSeen.clear();
-		saw(worn, names(backpack));
-		return broke;
+		saw(worn, bag);
 	}
 
 	private static List<String> names(Collection<Carried> backpack)

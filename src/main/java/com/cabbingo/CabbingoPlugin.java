@@ -429,6 +429,8 @@ public class CabbingoPlugin extends Plugin
 	// tick apart).
 	private void countSkilling()
 	{
+		// gains while a random event's rule is broken count for no tile (user, 2026-11-07); the infobox says so
+		boolean ok = ruleLines.isEmpty();
 		Map<Integer, Integer> now = backpack();
 		Set<String> around = new HashSet<>(xpBefore);
 		around.addAll(xpNow);
@@ -441,7 +443,7 @@ public class CabbingoPlugin extends Plugin
 			{
 				int bars = client.getVarbitValue(varbit);
 				Integer before = barsBefore.put(varbit, bars);
-				if (before != null && bars > before && smithing)
+				if (before != null && bars > before && smithing && ok)
 				{
 					skills.add("Smithing", bar, bars - before);
 				}
@@ -458,7 +460,7 @@ public class CabbingoPlugin extends Plugin
 			sackTicks = 2;
 		}
 		sackBefore = sack;
-		if (!backpackGained.isEmpty() && !around.isEmpty())
+		if (!backpackGained.isEmpty() && !around.isEmpty() && ok)
 		{
 			skills.gained(around, backpackGained);
 		}
@@ -474,7 +476,10 @@ public class CabbingoPlugin extends Plugin
 					String name = itemManager.getItemComposition(id).getName();
 					if (sackTicks > 0)
 					{
-						skills.add("Mining", name, more);
+						if (ok)
+						{
+							skills.add("Mining", name, more);
+						}
 					}
 					else
 					{
@@ -487,7 +492,7 @@ public class CabbingoPlugin extends Plugin
 		// A herb that went into an open herb sack: Farming XP a tick ago while the patch still had herbs, and nothing new in
 		// the backpack then or now (a grimy herb there counts from the backpack). The game says nothing (tried 2026-11-02).
 		// ponytail: one herb per tick with Farming XP; a tick-manipulated pick of two counts one
-		if (herbOnXp != null && gainedBefore.isEmpty() && backpackGained.isEmpty())
+		if (herbOnXp != null && gainedBefore.isEmpty() && backpackGained.isEmpty() && ok)
 		{
 			log.debug("Cabbingo: {} into the herb sack", herbOnXp);
 			skills.add("Farming", herbOnXp, 1);
@@ -714,7 +719,8 @@ public class CabbingoPlugin extends Plugin
 	public void onChatMessage(ChatMessage e)
 	{
 		// logs and fish: their messages are SPAM (shown with the game filter off)
-		if ((e.getType() == ChatMessageType.SPAM || e.getType() == ChatMessageType.GAMEMESSAGE) && playing() != null)
+		// (none while a random event's rule is broken: countSkilling)
+		if ((e.getType() == ChatMessageType.SPAM || e.getType() == ChatMessageType.GAMEMESSAGE) && playing() != null && ruleLines.isEmpty())
 		{
 			skills.message(Text.removeTags(e.getMessage()));
 		}
@@ -946,6 +952,11 @@ public class CabbingoPlugin extends Plugin
 		}
 		extra.addProperty("duplicate", petDuplicate);
 		String content = "**" + rsn + "** got a pet" + (petName != null ? ": " + petName : "") + (petDuplicate ? " (duplicate)" : "");
+		if (!ruleLines.isEmpty())
+		{
+			extra.add("broke", gson.toJsonTree(ruleLines));
+			content += "\nFor no tile: " + String.join(", ", ruleLines);
+		}
 		send(payload("PET", rsn, content, extra), true);
 	}
 
@@ -971,9 +982,18 @@ public class CabbingoPlugin extends Plugin
 			return;
 		}
 		Wants w = wants;
+		// a running random event's rules hold for every tile (user, 2026-11-07): a kill that broke one still goes to the
+		// gp lists and Discord, with the rules it broke (extra.broke), and the server counts it for no tile
+		Map<String, String> worn = worn();
+		List<String> bag = bag();
+		List<String> broke = killRules.eventsBroken(events(w), worn, bag, System.currentTimeMillis());
 		if (w != null && w.kc != null && !w.kc.isEmpty() && !category.equals("PLAYER"))
 		{
 			checkKill(rsn, source, w.kc);
+		}
+		else
+		{
+			killRules.next(worn, bag);
 		}
 		if (stacks.isEmpty())
 		{
@@ -996,12 +1016,17 @@ public class CabbingoPlugin extends Plugin
 		String sourceKey = category.equals("PLAYER") ? "pvp" : source.trim().toLowerCase(Locale.ROOT);
 		Double min = w.sources.get(sourceKey);
 		boolean shot = wanted || value >= w.big || (min != null && value >= min);
-		// Such a kill, a unique and PvP go alone (the whole drop, its own proof), after the open batch; any other kill
-		// joins the batch of its source.
-		if (shot || unique || category.equals("PLAYER"))
+		if (!broke.isEmpty() && (wanted || (min != null && value >= min)))
+		{
+			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
+				"<col=ff0000>The drop is invalidated for the tiles</col> (" + String.join(", ", broke) + ")", null);
+		}
+		// Such a kill, a unique, PvP and one that broke a random event go alone (the whole drop, its own proof), after the
+		// open batch; any other kill joins the batch of its source.
+		if (shot || unique || category.equals("PLAYER") || !broke.isEmpty())
 		{
 			sendKills(kills.take());
-			sendLoot(rsn, source, category, items, 1, shot);
+			sendLoot(rsn, source, category, items, 1, shot, broke);
 		}
 		else
 		{
@@ -1025,9 +1050,7 @@ public class CabbingoPlugin extends Plugin
 			backpack.add(new KillRules.Carried(c.getName(), Arrays.asList(c.getInventoryActions()).contains("Eat")));
 		}
 		kcRsn = rsn;
-		Wants w = wants;
-		List<KillRules.Event> events = w == null || w.events == null ? Collections.emptyList() : w.events;
-		Map<KillRules.Goal, String> broke = killRules.kill(goals, source, backpack, worn(), events, System.currentTimeMillis());
+		Map<KillRules.Goal, String> broke = killRules.kill(goals, source, backpack, worn(), events(wants), System.currentTimeMillis());
 		log.debug("Cabbingo: kill of {}, kill count tiles {}, broke {}", source, goals.stream().map(g -> g.source + "/" + g.left).collect(Collectors.toList()), broke.values());
 		broke.forEach((g, why) ->
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
@@ -1096,16 +1119,14 @@ public class CabbingoPlugin extends Plugin
 		boolean events = w != null && w.events != null && !w.events.isEmpty();
 		if (player == null || (!kcRules && !events))
 		{
-			setRuleBox(null, Collections.emptyList());
+			ruleLines = Collections.emptyList();
+			setRuleBox(null, ruleLines);
 			return;
 		}
 		Map<String, String> worn = worn();
 		List<String> bag = bag();
-		// a random event's rules hold for every kill count tile too
-		if (kcRules || (events && !w.kc.isEmpty()))
-		{
-			killRules.saw(worn, bag);
-		}
+		// a random event's rules hold for every kill too
+		killRules.saw(worn, bag);
 		Map<String, Set<String>> now = new HashMap<>();
 		worn.forEach((slot, name) -> now.put(slot, Collections.singleton(name)));
 		long time = System.currentTimeMillis();
@@ -1123,7 +1144,16 @@ public class CabbingoPlugin extends Plugin
 				first = first == null ? ev : first;
 			}
 		}
+		ruleLines = lines;
 		setRuleBox(first, lines);
+	}
+
+	// the rules of running random events broken right now (watchGear): skilling and a pet then count for no tile
+	private List<String> ruleLines = Collections.emptyList();
+
+	private static List<KillRules.Event> events(Wants w)
+	{
+		return w == null || w.events == null ? Collections.emptyList() : w.events;
 	}
 
 	private void setRuleBox(KillRules.Event ev, List<String> lines)
@@ -1221,12 +1251,12 @@ public class CabbingoPlugin extends Plugin
 	{
 		if (b != null)
 		{
-			sendLoot(b.rsn, b.source, b.category, new ArrayList<>(b.items.values()), b.kills, false);
+			sendLoot(b.rsn, b.source, b.category, new ArrayList<>(b.items.values()), b.kills, false, Collections.emptyList());
 		}
 	}
 
 	// extra.kills: how many kills the items are from, their stacks added up (1 for a single kill)
-	private void sendLoot(String rsn, String source, String category, List<KillBatch.Item> items, int n, boolean shot)
+	private void sendLoot(String rsn, String source, String category, List<KillBatch.Item> items, int n, boolean shot, List<String> broke)
 	{
 		JsonArray list = new JsonArray();
 		StringBuilder lines = new StringBuilder();
@@ -1247,6 +1277,11 @@ public class CabbingoPlugin extends Plugin
 		extra.addProperty("category", category);
 		extra.addProperty("kills", n);
 		extra.add("items", list);
+		if (!broke.isEmpty())
+		{
+			extra.add("broke", gson.toJsonTree(broke));
+			lines.append("\nFor no tile: ").append(String.join(", ", broke));
+		}
 		String content = "**" + rsn + "**: " + source + (n > 1 ? " x" + n : "") + " (" + String.format(Locale.ROOT, "%,d", value) + " gp)" + lines;
 		// (Discord takes at most 2,000 characters)
 		if (content.length() > 1900)
