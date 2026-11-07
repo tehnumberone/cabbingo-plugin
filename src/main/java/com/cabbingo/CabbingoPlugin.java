@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Locale;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.Objects;
@@ -35,6 +36,7 @@ import javax.imageio.stream.ImageOutputStream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.ChatMessageType;
+import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Item;
@@ -70,6 +72,8 @@ import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.loottracker.LootReceived;
 import net.runelite.client.task.Schedule;
 import net.runelite.client.ui.DrawManager;
+import net.runelite.client.ui.overlay.infobox.InfoBox;
+import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
 import net.runelite.client.util.Text;
 import net.runelite.http.api.loottracker.LootRecordType;
 import okhttp3.CacheControl;
@@ -114,6 +118,7 @@ public class CabbingoPlugin extends Plugin
 	@Inject private CabbingoConfig config;
 	@Inject private ItemManager itemManager;
 	@Inject private DrawManager drawManager;
+	@Inject private InfoBoxManager infoBoxManager;
 	@Inject private OkHttpClient http;
 	@Inject private Gson gson;
 	@Inject private ScheduledExecutorService executor;
@@ -198,6 +203,7 @@ public class CabbingoPlugin extends Plugin
 		double big;
 		List<Finished> finished = new ArrayList<>(); // the tile sides the team finished
 		List<KillRules.Goal> kc = new ArrayList<>(); // kill count sides still open, with their food rules (2026-11-06)
+		List<KillRules.Event> events = new ArrayList<>(); // the team's random events with gear or inventory rules (2026-11-07)
 		String rev; // the server's fingerprint of all this; every post's answer carries the current one (X-Rev)
 	}
 
@@ -243,6 +249,7 @@ public class CabbingoPlugin extends Plugin
 		sendKills(kills.take());
 		sendKc();
 		closePush();
+		setRuleBox(null, Collections.emptyList());
 		wants = null;
 		skills.goals(Collections.emptyList(), null);
 		petTicks = -1;
@@ -903,6 +910,7 @@ public class CabbingoPlugin extends Plugin
 			sendKc();
 		}
 		String player = playing();
+		watchGear(player);
 		if (player != null)
 		{
 			skillRsn = player;
@@ -1017,11 +1025,159 @@ public class CabbingoPlugin extends Plugin
 			backpack.add(new KillRules.Carried(c.getName(), Arrays.asList(c.getInventoryActions()).contains("Eat")));
 		}
 		kcRsn = rsn;
-		Map<KillRules.Goal, String> broke = killRules.kill(goals, source, backpack, System.currentTimeMillis());
+		Map<KillRules.Goal, String> broke = killRules.kill(goals, source, backpack, worn(), System.currentTimeMillis());
 		log.debug("Cabbingo: kill of {}, kill count tiles {}, broke {}", source, goals.stream().map(g -> g.source + "/" + g.left).collect(Collectors.toList()), broke.values());
 		broke.forEach((g, why) ->
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
 				"<col=ff0000>The kill is invalidated for the tile: " + g.title + "</col> (" + why + ")", null));
+	}
+
+	// The game's equipment slots by the names the rules use (KillRules.SLOTS)
+	private static final Map<String, EquipmentInventorySlot> SLOT_OF = new LinkedHashMap<>();
+	static
+	{
+		SLOT_OF.put("head", EquipmentInventorySlot.HEAD);
+		SLOT_OF.put("cape", EquipmentInventorySlot.CAPE);
+		SLOT_OF.put("neck", EquipmentInventorySlot.AMULET);
+		SLOT_OF.put("ammo", EquipmentInventorySlot.AMMO);
+		SLOT_OF.put("weapon", EquipmentInventorySlot.WEAPON);
+		SLOT_OF.put("body", EquipmentInventorySlot.BODY);
+		SLOT_OF.put("shield", EquipmentInventorySlot.SHIELD);
+		SLOT_OF.put("legs", EquipmentInventorySlot.LEGS);
+		SLOT_OF.put("hands", EquipmentInventorySlot.GLOVES);
+		SLOT_OF.put("feet", EquipmentInventorySlot.BOOTS);
+		SLOT_OF.put("ring", EquipmentInventorySlot.RING);
+	}
+
+	/** What the player wears now: slot -> item name, empty slots left out. */
+	private Map<String, String> worn()
+	{
+		Map<String, String> out = new HashMap<>();
+		ItemContainer c = client.getItemContainer(InventoryID.WORN);
+		if (c == null)
+		{
+			return out;
+		}
+		SLOT_OF.forEach((slot, s) ->
+		{
+			Item item = c.getItem(s.getSlotIdx());
+			if (item != null && item.getId() > 0)
+			{
+				out.put(slot, itemManager.getItemComposition(item.getId()).getName());
+			}
+		});
+		return out;
+	}
+
+	private List<String> bag()
+	{
+		List<String> out = new ArrayList<>();
+		ItemContainer inv = client.getItemContainer(InventoryID.INV);
+		for (Item item : inv == null ? new Item[0] : inv.getItems())
+		{
+			if (item.getId() > 0)
+			{
+				out.add(itemManager.getItemComposition(item.getId()).getName());
+			}
+		}
+		return out;
+	}
+
+	// The random event infobox: shown while the player breaks a rule of a running random event (user, 2026-11-07),
+	// so they know before they start. Gear and inventory are also noted every tick for the kill count rules.
+	private RuleBox ruleBox;
+
+	private void watchGear(String player)
+	{
+		Wants w = wants;
+		boolean kcRules = w != null && w.kc.stream().anyMatch(g -> g.gear != null || g.carry != null);
+		boolean events = w != null && w.events != null && !w.events.isEmpty();
+		if (player == null || (!kcRules && !events))
+		{
+			setRuleBox(null, Collections.emptyList());
+			return;
+		}
+		Map<String, String> worn = worn();
+		List<String> bag = bag();
+		if (kcRules)
+		{
+			killRules.saw(worn, bag);
+		}
+		Map<String, Set<String>> now = new HashMap<>();
+		worn.forEach((slot, name) -> now.put(slot, Collections.singleton(name)));
+		long time = System.currentTimeMillis();
+		List<String> lines = new ArrayList<>();
+		KillRules.Event first = null;
+		for (KillRules.Event ev : events ? w.events : Collections.<KillRules.Event>emptyList())
+		{
+			if (time < ev.from || time >= ev.to)
+			{
+				continue;
+			}
+			for (String line : KillRules.broken(ev, now, bag, bag))
+			{
+				lines.add("Random event: " + Character.toLowerCase(line.charAt(0)) + line.substring(1));
+				first = first == null ? ev : first;
+			}
+		}
+		setRuleBox(first, lines);
+	}
+
+	private void setRuleBox(KillRules.Event ev, List<String> lines)
+	{
+		if (lines.isEmpty())
+		{
+			if (ruleBox != null)
+			{
+				infoBoxManager.removeInfoBox(ruleBox);
+				ruleBox = null;
+			}
+			return;
+		}
+		String tip = String.join("</br>", lines);
+		if (ruleBox != null && ruleBox.event == ev)
+		{
+			ruleBox.tip = tip;
+			return;
+		}
+		if (ruleBox != null)
+		{
+			infoBoxManager.removeInfoBox(ruleBox);
+		}
+		java.util.regex.Matcher m = java.util.regex.Pattern.compile("item-images/(\\d+)\\.png$").matcher(ev.icon == null ? "" : ev.icon);
+		ruleBox = new RuleBox(itemManager.getImage(m.find() ? Integer.parseInt(m.group(1)) : 6199), this, ev, tip); // else a mystery box
+		infoBoxManager.addInfoBox(ruleBox);
+	}
+
+	static class RuleBox extends InfoBox
+	{
+		final KillRules.Event event;
+		volatile String tip;
+
+		RuleBox(java.awt.image.BufferedImage image, Plugin plugin, KillRules.Event event, String tip)
+		{
+			super(image, plugin);
+			this.event = event;
+			this.tip = tip;
+		}
+
+		@Override
+		public String getText()
+		{
+			return "!";
+		}
+
+		@Override
+		public java.awt.Color getTextColor()
+		{
+			return java.awt.Color.RED;
+		}
+
+		@Override
+		public String getTooltip()
+		{
+			return tip;
+		}
 	}
 
 	// The kills that kept to their tile's food rule, per tile side: the server adds them to the tiles

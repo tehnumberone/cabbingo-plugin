@@ -96,4 +96,35 @@ public class KillRulesTest
 		r.take();
 		assertFalse(r.shot());
 	}
+
+	@Test
+	public void gearRules()
+	{
+		KillRules.Rules hat = new KillRules.Rules();
+		hat.gear = new java.util.HashMap<>();
+		KillRules.Items empty = new KillRules.Items();
+		empty.mode = "empty";
+		hat.gear.put("head", empty);
+		KillRules.Items sand = new KillRules.Items();
+		sand.mode = "one";
+		sand.items = Arrays.asList("Sandstone (1kg)", "Sandstone (5kg)");
+		hat.carry = sand;
+		Map<String, java.util.Set<String>> helm = Collections.singletonMap("head", Collections.singleton("Helm of neitiznot"));
+		assertEquals(Arrays.asList("No hat allowed", "Carry Sandstone (1kg) or Sandstone (5kg)"), KillRules.broken(hat, helm, Collections.emptyList(), Collections.emptyList()));
+		assertTrue(KillRules.broken(hat, Collections.emptyMap(), Collections.singletonList("sandstone (5kg)"), Collections.emptyList()).isEmpty());
+
+		// a kill with Tumeken's shadow worn at any time since the last kill breaks "not"
+		KillRules.Goal whisperer = goal("w", "The Whisperer", 5, null);
+		whisperer.gear = new java.util.HashMap<>();
+		KillRules.Items shadow = new KillRules.Items();
+		shadow.mode = "not";
+		shadow.items = Collections.singletonList("Tumeken's shadow");
+		whisperer.gear.put("weapon", shadow);
+		List<KillRules.Goal> goals = Collections.singletonList(whisperer);
+		KillRules r = new KillRules();
+		r.saw(Collections.singletonMap("weapon", "Tumeken's shadow"), Collections.emptyList());
+		Map<KillRules.Goal, String> broke = r.kill(goals, "The Whisperer", Collections.emptyList(), Collections.singletonMap("weapon", "Sanguinesti staff"), 0);
+		assertEquals("No Tumeken's shadow allowed", broke.get(whisperer));
+		assertTrue("the next kill starts clean", r.kill(goals, "The Whisperer", Collections.emptyList(), Collections.singletonMap("weapon", "Sanguinesti staff"), 1).isEmpty());
+	}
 }

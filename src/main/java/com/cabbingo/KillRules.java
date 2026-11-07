@@ -2,6 +2,8 @@ package com.cabbingo;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,8 +19,127 @@ class KillRules
 {
 	static final long WAIT = 60_000;
 
+	/**
+	 * Gear and inventory rules (GearRules in models/bingo.ts), of a kill count side or a random event. gear: slot (head,
+	 * cape, neck, ammo, weapon, body, shield, legs, hands, feet, ring) -> empty, only or not; carry: one, all or not.
+	 */
+	static class Rules
+	{
+		Map<String, Items> gear;
+		Items carry;
+	}
+
+	static class Items
+	{
+		String mode;
+		List<String> items = new ArrayList<>();
+	}
+
+	/** A random event of the team with rules, from..to (DinkTeam.events). */
+	static class Event extends Rules
+	{
+		String title;
+		String icon; // the event's picture, item-images/<id>.png for an item
+		long from;
+		long to;
+	}
+
+	// the slot's word in a warning, as gearLines words it
+	private static final Map<String, String[]> SLOTS = new LinkedHashMap<>();
+	static
+	{
+		String[][] slots = {{"head", "Head", "hat"}, {"cape", "Cape", "cape"}, {"neck", "Neck", "amulet"}, {"ammo", "Ammo", "ammo"},
+			{"weapon", "Weapon", "weapon"}, {"body", "Body", "body armour"}, {"shield", "Shield", "shield"}, {"legs", "Legs", "leg armour"},
+			{"hands", "Hands", "gloves"}, {"feet", "Feet", "boots"}, {"ring", "Ring", "ring"}};
+		for (String[] s : slots)
+		{
+			SLOTS.put(s[0], new String[]{s[1], s[2]});
+		}
+	}
+
+	private static String list(List<String> items, String word)
+	{
+		return items.size() < 2 ? String.join("", items)
+			: String.join(", ", items.subList(0, items.size() - 1)) + " " + word + " " + items.get(items.size() - 1);
+	}
+
+	/**
+	 * The rules broken, one line each in gearLines' words. worn: per slot every item it held (during a kill: since the
+	 * last one; empty for nothing); bag: the inventory now; bagSeen: everything it held (the same as bag outside a kill).
+	 */
+	static List<String> broken(Rules r, Map<String, Set<String>> worn, Collection<String> bag, Collection<String> bagSeen)
+	{
+		List<String> out = new ArrayList<>();
+		if (r == null)
+		{
+			return out;
+		}
+		for (Map.Entry<String, String[]> slot : SLOTS.entrySet())
+		{
+			Items s = r.gear == null ? null : r.gear.get(slot.getKey());
+			if (s == null)
+			{
+				continue;
+			}
+			Set<String> had = worn.getOrDefault(slot.getKey(), Collections.emptySet());
+			Set<String> listed = keys(s.items);
+			if ("empty".equals(s.mode) && !had.isEmpty())
+			{
+				out.add("No " + slot.getValue()[1] + " allowed");
+			}
+			if ("only".equals(s.mode) && (had.isEmpty() || had.stream().anyMatch(n -> !listed.contains(key(n)))))
+			{
+				out.add(slot.getValue()[0] + ": only " + list(s.items, "or"));
+			}
+			if ("not".equals(s.mode) && had.stream().anyMatch(n -> listed.contains(key(n))))
+			{
+				out.add("No " + list(s.items, "or") + " allowed");
+			}
+		}
+		Items c = r.carry;
+		if (c != null)
+		{
+			Set<String> listed = keys(c.items);
+			Set<String> now = keys(bag);
+			if ("one".equals(c.mode) && listed.stream().noneMatch(now::contains))
+			{
+				out.add("Carry " + list(c.items, "or"));
+			}
+			if ("all".equals(c.mode) && !now.containsAll(listed))
+			{
+				out.add("Carry " + list(c.items, "and"));
+			}
+			if ("not".equals(c.mode) && keys(bagSeen).stream().anyMatch(listed::contains))
+			{
+				out.add("No " + list(c.items, "or") + " in the inventory");
+			}
+		}
+		return out;
+	}
+
+	private static Set<String> keys(Collection<String> names)
+	{
+		Set<String> out = new HashSet<>();
+		for (String n : names)
+		{
+			out.add(key(n));
+		}
+		return out;
+	}
+
+	// what was worn and carried since the last kill, for the gear rules (saw, on every game tick)
+	private final Map<String, Set<String>> wornSeen = new HashMap<>();
+	private final Set<String> bagSeen = new HashSet<>();
+
+	/** What the player wears (slot -> item) and carries now; kept until the next kill. */
+	synchronized void saw(Map<String, String> worn, Collection<String> bag)
+	{
+		worn.forEach((slot, name) -> wornSeen.computeIfAbsent(slot, k -> new HashSet<>()).add(name));
+		bagSeen.addAll(bag);
+	}
+
 	/** A kill count side the team can still add to (the server's kcGoals). */
-	static class Goal
+	static class Goal extends Rules
 	{
 		String id; // the tile's id, ':flip' for its flipped side
 		String title;
@@ -102,6 +223,13 @@ class KillRules
 	 */
 	synchronized Map<Goal, String> kill(List<Goal> goals, String source, Collection<Carried> backpack, long time)
 	{
+		return kill(goals, source, backpack, Collections.emptyMap(), time);
+	}
+
+	/** The same, with what is worn now (slot -> item) for the gear rules. */
+	synchronized Map<Goal, String> kill(List<Goal> goals, String source, Collection<Carried> backpack, Map<String, String> worn, long time)
+	{
+		saw(worn, names(backpack));
 		Map<Goal, String> broke = new LinkedHashMap<>();
 		for (Goal g : goals)
 		{
@@ -110,6 +238,11 @@ class KillRules
 				continue;
 			}
 			String why = broken(g.food, backpack, eaten);
+			if (why == null)
+			{
+				List<String> gear = broken(g, wornSeen, names(backpack), bagSeen);
+				why = gear.isEmpty() ? null : String.join(", ", gear);
+			}
 			if (why != null)
 			{
 				broke.put(g, why);
@@ -128,7 +261,21 @@ class KillRules
 			}
 		}
 		eaten.clear();
+		// the next kill starts from what is worn and carried now
+		wornSeen.clear();
+		bagSeen.clear();
+		saw(worn, names(backpack));
 		return broke;
+	}
+
+	private static List<String> names(Collection<Carried> backpack)
+	{
+		List<String> out = new ArrayList<>();
+		for (Carried c : backpack)
+		{
+			out.add(c.name);
+		}
+		return out;
 	}
 
 	synchronized boolean due(long time)
