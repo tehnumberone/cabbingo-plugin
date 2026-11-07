@@ -1025,7 +1025,9 @@ public class CabbingoPlugin extends Plugin
 			backpack.add(new KillRules.Carried(c.getName(), Arrays.asList(c.getInventoryActions()).contains("Eat")));
 		}
 		kcRsn = rsn;
-		Map<KillRules.Goal, String> broke = killRules.kill(goals, source, backpack, worn(), System.currentTimeMillis());
+		Wants w = wants;
+		List<KillRules.Event> events = w == null || w.events == null ? Collections.emptyList() : w.events;
+		Map<KillRules.Goal, String> broke = killRules.kill(goals, source, backpack, worn(), events, System.currentTimeMillis());
 		log.debug("Cabbingo: kill of {}, kill count tiles {}, broke {}", source, goals.stream().map(g -> g.source + "/" + g.left).collect(Collectors.toList()), broke.values());
 		broke.forEach((g, why) ->
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
@@ -1099,7 +1101,8 @@ public class CabbingoPlugin extends Plugin
 		}
 		Map<String, String> worn = worn();
 		List<String> bag = bag();
-		if (kcRules)
+		// a random event's rules hold for every kill count tile too
+		if (kcRules || (events && !w.kc.isEmpty()))
 		{
 			killRules.saw(worn, bag);
 		}
@@ -1116,7 +1119,7 @@ public class CabbingoPlugin extends Plugin
 			}
 			for (String line : KillRules.broken(ev, now, bag, bag))
 			{
-				lines.add("Random event: " + Character.toLowerCase(line.charAt(0)) + line.substring(1));
+				lines.add(KillRules.eventLine(line));
 				first = first == null ? ev : first;
 			}
 		}

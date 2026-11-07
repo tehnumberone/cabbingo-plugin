@@ -117,6 +117,12 @@ class KillRules
 		return out;
 	}
 
+	/** A broken rule of a random event, as the infobox and the chat say it: "Random event: no hat allowed". */
+	static String eventLine(String line)
+	{
+		return "Random event: " + Character.toLowerCase(line.charAt(0)) + line.substring(1);
+	}
+
 	private static Set<String> keys(Collection<String> names)
 	{
 		Set<String> out = new HashSet<>();
@@ -229,7 +235,24 @@ class KillRules
 	/** The same, with what is worn now (slot -> item) for the gear rules. */
 	synchronized Map<Goal, String> kill(List<Goal> goals, String source, Collection<Carried> backpack, Map<String, String> worn, long time)
 	{
+		return kill(goals, source, backpack, worn, Collections.emptyList(), time);
+	}
+
+	/**
+	 * The same, with the team's random events: a kill that broke the rules of one running at the kill counts for no tile,
+	 * like a broken food rule (user, 2026-11-07).
+	 */
+	synchronized Map<Goal, String> kill(List<Goal> goals, String source, Collection<Carried> backpack, Map<String, String> worn, List<Event> events, long time)
+	{
 		saw(worn, names(backpack));
+		List<String> eventLines = new ArrayList<>();
+		for (Event e : events)
+		{
+			if (time >= e.from && time < e.to)
+			{
+				broken(e, wornSeen, names(backpack), bagSeen).forEach(l -> eventLines.add(eventLine(l)));
+			}
+		}
 		Map<Goal, String> broke = new LinkedHashMap<>();
 		for (Goal g : goals)
 		{
@@ -241,6 +264,7 @@ class KillRules
 			if (why == null)
 			{
 				List<String> gear = broken(g, wornSeen, names(backpack), bagSeen);
+				gear.addAll(eventLines);
 				why = gear.isEmpty() ? null : String.join(", ", gear);
 			}
 			if (why != null)

@@ -126,5 +126,17 @@ public class KillRulesTest
 		Map<KillRules.Goal, String> broke = r.kill(goals, "The Whisperer", Collections.emptyList(), Collections.singletonMap("weapon", "Sanguinesti staff"), 0);
 		assertEquals("No Tumeken's shadow allowed", broke.get(whisperer));
 		assertTrue("the next kill starts clean", r.kill(goals, "The Whisperer", Collections.emptyList(), Collections.singletonMap("weapon", "Sanguinesti staff"), 1).isEmpty());
+
+		// a running random event's rules hold for the tile too; one that ended does not
+		KillRules.Event noHat = new KillRules.Event();
+		noHat.gear = hat.gear;
+		noHat.from = 0;
+		noHat.to = 100;
+		List<KillRules.Event> events = Collections.singletonList(noHat);
+		Map<String, String> helmed = Collections.singletonMap("head", "Helm of neitiznot");
+		assertEquals("Random event: no hat allowed", r.kill(goals, "The Whisperer", Collections.emptyList(), helmed, events, 2).get(whisperer));
+		assertEquals(4, whisperer.left);
+		assertTrue(r.kill(goals, "The Whisperer", Collections.emptyList(), helmed, events, 100).isEmpty());
+		assertEquals(3, whisperer.left);
 	}
 }
