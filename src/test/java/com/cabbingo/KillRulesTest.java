@@ -85,5 +85,15 @@ public class KillRulesTest
 		assertTrue("a tile of the day counts during its day only", r.take().isEmpty());
 		r.kill(day, "Venator", Collections.emptyList(), 10_000);
 		assertEquals(Integer.valueOf(1), r.take().get("t4"));
+
+		KillRules.Goal big = goal("t5", "Venator", 8, null);
+		big.marks = new int[]{6, 4, 2, 0};
+		List<KillRules.Goal> bigs = Collections.singletonList(big);
+		r.kill(bigs, "Venator", Collections.emptyList(), 0);
+		assertFalse("no mark: waits a minute, no screenshot", r.due(1) || r.shot());
+		r.kill(bigs, "Venator", Collections.emptyList(), 1);
+		assertTrue("6 to go is a mark: at once, with a screenshot", r.due(1) && r.shot());
+		r.take();
+		assertFalse(r.shot());
 	}
 }

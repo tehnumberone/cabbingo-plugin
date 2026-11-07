@@ -27,6 +27,7 @@ class KillRules
 		Food food; // null: any food
 		long from; // a tile of the day: its day, from..to; 0 for a grid tile
 		long to;
+		int[] marks; // the kills still to go at which a screenshot goes along: the tile's proof (kcMarks)
 	}
 
 	static class Food
@@ -51,7 +52,8 @@ class KillRules
 	private final List<String> eaten = new ArrayList<>(); // since the last kill
 	private final Map<String, Integer> pending = new LinkedHashMap<>(); // goal id -> kills not sent yet
 	private long due; // 0: nothing waiting
-	private boolean now; // a goal is finished by what waits: send at the next chance
+	private boolean now; // a goal is finished by what waits, or a mark was hit: send at the next chance
+	private boolean shot; // a mark was hit: the send takes a screenshot along
 
 	/** What the player ate (the "Eat" option), until the next kill. */
 	synchronized void ate(String name)
@@ -115,7 +117,11 @@ class KillRules
 			}
 			pending.merge(g.id, 1, Integer::sum);
 			g.left--;
-			now |= g.left <= 0;
+			for (int mark : g.marks == null ? new int[0] : g.marks)
+			{
+				shot |= mark == g.left;
+			}
+			now |= g.left <= 0 || shot;
 			if (due == 0)
 			{
 				due = time + WAIT;
@@ -137,7 +143,14 @@ class KillRules
 		pending.clear();
 		due = 0;
 		now = false;
+		shot = false;
 		return out;
+	}
+
+	/** Whether the next send takes a screenshot along; ask before take(). */
+	synchronized boolean shot()
+	{
+		return shot;
 	}
 
 	private static String key(String name)

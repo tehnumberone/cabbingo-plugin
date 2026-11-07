@@ -1027,7 +1027,13 @@ public class CabbingoPlugin extends Plugin
 	// The kills that kept to their tile's food rule, per tile side: the server adds them to the tiles
 	private void sendKc()
 	{
-		Map<String, Integer> taken = killRules.take();
+		boolean shot;
+		Map<String, Integer> taken;
+		synchronized (killRules)
+		{
+			shot = killRules.shot();
+			taken = killRules.take();
+		}
 		String rsn = kcRsn;
 		if (taken.isEmpty() || rsn == null)
 		{
@@ -1037,7 +1043,19 @@ public class CabbingoPlugin extends Plugin
 		taken.forEach(counts::addProperty);
 		JsonObject extra = new JsonObject();
 		extra.add("kills", counts);
-		send(payload("KC", rsn, "", extra), false);
+		// the message with the screenshot: who, and per tile how many kills and how many are left
+		StringBuilder lines = new StringBuilder("**" + rsn + "**");
+		Wants w = wants;
+		for (KillRules.Goal g : w == null ? Collections.<KillRules.Goal>emptyList() : w.kc)
+		{
+			if (taken.containsKey(g.id))
+			{
+				lines.append('\n').append(taken.get(g.id)).append(" x ").append(g.source).append(" for ").append(g.title)
+					.append(" (").append(Math.max(0, g.left)).append(" to go)");
+			}
+		}
+		// a screenshot at kcMarks: it goes to the team's channel, the tile's proof
+		send(payload("KC", rsn, lines.toString(), extra), shot);
 	}
 
 	private void sendKills(KillBatch.Batch b)
