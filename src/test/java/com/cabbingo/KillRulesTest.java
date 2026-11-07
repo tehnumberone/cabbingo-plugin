@@ -75,5 +75,15 @@ public class KillRulesTest
 		assertTrue(r.kill(goals, "Venator", Collections.emptyList(), 4000).isEmpty());
 		assertNull("a finished goal takes no more", r.take().get("t1"));
 		assertFalse(r.due(Long.MAX_VALUE));
+
+		KillRules.Goal tomorrow = goal("t4", "Venator", 5, null);
+		tomorrow.from = 10_000;
+		tomorrow.to = 20_000;
+		List<KillRules.Goal> day = Collections.singletonList(tomorrow);
+		r.kill(day, "Venator", Collections.emptyList(), 9_999);
+		r.kill(day, "Venator", Collections.emptyList(), 20_000);
+		assertTrue("a tile of the day counts during its day only", r.take().isEmpty());
+		r.kill(day, "Venator", Collections.emptyList(), 10_000);
+		assertEquals(Integer.valueOf(1), r.take().get("t4"));
 	}
 }

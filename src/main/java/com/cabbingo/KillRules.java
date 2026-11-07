@@ -25,6 +25,8 @@ class KillRules
 		String source; // the monster, as the loot tracker names it
 		int left; // kills still needed
 		Food food; // null: any food
+		long from; // a tile of the day: its day, from..to; 0 for a grid tile
+		long to;
 	}
 
 	static class Food
@@ -101,7 +103,7 @@ class KillRules
 		Map<Goal, String> broke = new LinkedHashMap<>();
 		for (Goal g : goals)
 		{
-			if (g.left <= 0 || g.source == null || !g.source.trim().equalsIgnoreCase(source.trim()))
+			if (g.left <= 0 || g.source == null || !g.source.trim().equalsIgnoreCase(source.trim()) || time < g.from || (g.to > 0 && time >= g.to))
 			{
 				continue;
 			}

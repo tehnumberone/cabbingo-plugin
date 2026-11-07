@@ -22,6 +22,7 @@ import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ScheduledExecutorService;
@@ -1016,7 +1017,9 @@ public class CabbingoPlugin extends Plugin
 			backpack.add(new KillRules.Carried(c.getName(), Arrays.asList(c.getInventoryActions()).contains("Eat")));
 		}
 		kcRsn = rsn;
-		killRules.kill(goals, source, backpack, System.currentTimeMillis()).forEach((g, why) ->
+		Map<KillRules.Goal, String> broke = killRules.kill(goals, source, backpack, System.currentTimeMillis());
+		log.debug("Cabbingo: kill of {}, kill count tiles {}, broke {}", source, goals.stream().map(g -> g.source + "/" + g.left).collect(Collectors.toList()), broke.values());
+		broke.forEach((g, why) ->
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
 				"<col=ff0000>The kill is invalidated for the tile: " + g.title + "</col> (" + why + ")", null));
 	}
