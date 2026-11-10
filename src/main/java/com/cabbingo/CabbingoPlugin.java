@@ -174,6 +174,9 @@ public class CabbingoPlugin extends Plugin
 	private long templeXp = -1;
 	// The finished tile sides already known (by id); null until the first answer, so a login shows no old ones.
 	private Set<String> finishedSeen;
+	// when each side last got its popup: a post's X-Finished must not bring back one the live line's fetch already
+	// showed while the post was on its way (the same tile popped up twice, 2026-11-10)
+	private final Map<String, Long> poppedAt = new HashMap<>();
 	// Titles waiting for the game's popup, one at a time.
 	private final Queue<Popup> popups = new ConcurrentLinkedQueue<>();
 	private long soundUntil; // client thread only
@@ -764,6 +767,7 @@ public class CabbingoPlugin extends Plugin
 					+ (f.wait ? " once approved" : "") + ")"
 					+ (f.description == null || f.description.isBlank() ? "" : ": " + Text.escapeJagex(f.description.replaceAll("\\s+", " ").trim()));
 				popups.add(new Popup(kind + " Complete!", text, chat, f.id.endsWith(":flip"), f.id));
+				poppedAt.put(f.id, System.currentTimeMillis());
 			}
 		}
 		// the welcome first, then tiles, then rows, then columns, queued ones too (user, 2026-11-03)
@@ -779,9 +783,16 @@ public class CabbingoPlugin extends Plugin
 		finishedSeen = ids;
 	}
 
-	private synchronized void unsee(String[] ids)
+	private void unsee(String[] ids)
 	{
-		if (finishedSeen != null && finishedSeen.removeAll(Arrays.asList(ids)))
+		unsee(ids, Long.MAX_VALUE);
+	}
+
+	// only the sides that got no popup since before: the time a post was sent
+	private synchronized void unsee(String[] ids, long before)
+	{
+		List<String> old = Arrays.stream(ids).filter(id -> poppedAt.getOrDefault(id, 0L) < before).collect(Collectors.toList());
+		if (finishedSeen != null && finishedSeen.removeAll(old))
 		{
 			configManager.setConfiguration(CabbingoConfig.GROUP, SEEN, String.join(",", finishedSeen));
 		}
@@ -1335,6 +1346,7 @@ public class CabbingoPlugin extends Plugin
 	private void post(HttpUrl url, RequestBody body, JsonObject again)
 	{
 		Request request = new Request.Builder().url(url).post(body).build();
+		long sent = System.currentTimeMillis();
 		http.newCall(request).enqueue(new Callback()
 		{
 			@Override
@@ -1355,7 +1367,7 @@ public class CabbingoPlugin extends Plugin
 				String added = response.header("X-Finished");
 				if (added != null)
 				{
-					unsee(added.split(","));
+					unsee(added.split(","), sent);
 				}
 				if (rev != null && w != null && (!rev.equals(w.rev) || added != null))
 				{
