@@ -1414,7 +1414,6 @@ public class CabbingoPlugin extends Plugin
 			@Override
 			public void onResponse(Call call, Response response)
 			{
-				response.close();
 				// The board changed since this plugin's copy of it: ask for the new one now, not in ten minutes.
 				String rev = response.header("X-Rev");
 				Wants w = wants;
@@ -1424,7 +1423,22 @@ public class CabbingoPlugin extends Plugin
 				if (added != null)
 				{
 					unsee(added.split(","), sent);
+					// the answer carries the team's finished list: the popup comes now, not after another fetch
+					// (an older server sends none, and the fetch below brings it)
+					try
+					{
+						Wants f = gson.fromJson(response.body().charStream(), Wants.class);
+						if (f != null && f.finished != null && !f.finished.isEmpty())
+						{
+							finished(f.finished);
+						}
+					}
+					catch (RuntimeException e)
+					{
+						log.debug("Cabbingo: no finished list in the answer", e);
+					}
 				}
+				response.close();
 				if (rev != null && w != null && (!rev.equals(w.rev) || added != null))
 				{
 					w.rev = rev; // (one ask, not one per post while it is on its way)
