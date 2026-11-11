@@ -756,7 +756,7 @@ public class CabbingoPlugin extends Plugin
 		}
 	}
 
-	// A tile side, row or column (id row:i, col:i) the team finished since the last answer gets the game's popup, as
+	// A tile side, row, column or diagonal (id row:i, col:i, diag:i) the team finished since the last answer gets the game's popup, as
 	// League tasks do, and a chat message with the tile's description. While a captain still has to approve the drops
 	// that finish it, the points read "on approval". Approved later, it shows no second popup.
 	private synchronized void finished(List<Finished> finished)
@@ -767,7 +767,7 @@ public class CabbingoPlugin extends Plugin
 			ids.add(f.id);
 			if (finishedSeen != null && !finishedSeen.contains(f.id))
 			{
-				String kind = f.id.startsWith("row:") ? "Row" : f.id.startsWith("col:") ? "Column" : "Tile";
+				String kind = f.id.startsWith("row:") ? "Row" : f.id.startsWith("col:") ? "Column" : f.id.startsWith("diag:") ? "Diagonal" : "Tile";
 				String name = Text.escapeJagex(f.title);
 				String text = kind + " completed: <col=ffffff>" + name + "</col><br>"
 					+ (f.wait ? "Points on approval: " : "Points earned: ") + "<col=ffffff>" + f.points + "</col>";
@@ -780,7 +780,7 @@ public class CabbingoPlugin extends Plugin
 		}
 		// the welcome first, then tiles, then rows, then columns, queued ones too (user, 2026-11-03)
 		List<Popup> queued = new ArrayList<>(popups);
-		queued.sort(Comparator.comparingInt(p -> p.id == null ? 0 : p.id.startsWith("row:") ? 2 : p.id.startsWith("col:") ? 3 : 1));
+		queued.sort(Comparator.comparingInt(p -> p.id == null ? 0 : p.id.startsWith("row:") ? 2 : p.id.startsWith("col:") ? 3 : p.id.startsWith("diag:") ? 4 : 1));
 		popups.clear();
 		popups.addAll(queued);
 		log.debug("Cabbingo: finished {}, seen before {}", ids, finishedSeen);
