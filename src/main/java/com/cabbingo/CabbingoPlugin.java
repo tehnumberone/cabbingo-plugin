@@ -49,6 +49,7 @@ import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.InventoryID;
 import net.runelite.api.WidgetNode;
 import net.runelite.api.WorldType;
+import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.GameStateChanged;
@@ -65,8 +66,10 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.events.PlayerLootReceived;
 import net.runelite.client.events.ServerNpcLoot;
+import net.runelite.client.game.ItemEquipmentStats;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
+import net.runelite.client.game.ItemStats;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.loottracker.LootReceived;
@@ -674,6 +677,11 @@ public class CabbingoPlugin extends Plugin
 		{
 			killRules.ate(Text.removeTags(e.getMenuTarget()));
 		}
+		// and potions drunk for its potion rule
+		if ("Drink".equals(e.getMenuOption()))
+		{
+			killRules.drank(Text.removeTags(e.getMenuTarget()));
+		}
 		// "Pick Herbs": the patch's varbit says which herb it has (SkillCounter.herbAt). Any other click in the world (a
 		// walk, compost, a seed, another patch) forgets it: farming varbits are shared between areas and patches.
 		String action = e.getMenuAction().name();
@@ -1058,7 +1066,8 @@ public class CabbingoPlugin extends Plugin
 				continue;
 			}
 			net.runelite.api.ItemComposition c = itemManager.getItemComposition(item.getId());
-			backpack.add(new KillRules.Carried(c.getName(), Arrays.asList(c.getInventoryActions()).contains("Eat")));
+			List<String> actions = Arrays.asList(c.getInventoryActions());
+			backpack.add(new KillRules.Carried(c.getName(), actions.contains("Eat"), actions.contains("Drink")));
 		}
 		kcRsn = rsn;
 		Map<KillRules.Goal, String> broke = killRules.kill(goals, source, backpack, worn(), events(wants), System.currentTimeMillis());
@@ -1102,7 +1111,53 @@ public class CabbingoPlugin extends Plugin
 				out.put(slot, itemManager.getItemComposition(item.getId()).getName());
 			}
 		});
+		int quiver = quiverAmmo(out.get("cape"));
+		if (quiver > 0)
+		{
+			out.put("quiver", itemManager.getItemComposition(quiver).getName());
+		}
 		return out;
+	}
+
+	// The ammo in Dizana's quiver's own slot, only while a quiver (or the max cape with one) is worn; 0 for none
+	private int quiverAmmo(String cape)
+	{
+		int id = client.getVarpValue(VarPlayerID.DIZANAS_QUIVER_TEMP_AMMO);
+		return cape != null && cape.toLowerCase(Locale.ROOT).contains("dizana") && id > 0 ? id : 0;
+	}
+
+	// For the gear rules, every game tick: what the worn gear is worth by RuneLite's prices (ammo by its whole stack,
+	// untradeables 0) and which worn items have no combat stats.
+	private void lookAtGear(Map<String, String> worn)
+	{
+		List<int[]> items = new ArrayList<>(); // item id, quantity
+		ItemContainer c = client.getItemContainer(InventoryID.WORN);
+		for (Item item : c == null ? new Item[0] : c.getItems())
+		{
+			if (item.getId() > 0)
+			{
+				items.add(new int[]{item.getId(), item.getQuantity()});
+			}
+		}
+		int quiver = quiverAmmo(worn.get("cape"));
+		if (quiver > 0)
+		{
+			items.add(new int[]{quiver, client.getVarpValue(VarPlayerID.DIZANAS_QUIVER_TEMP_AMMO_AMOUNT)});
+		}
+		long gp = 0;
+		for (int[] i : items)
+		{
+			gp += itemManager.getItemPrice(i[0]) * i[1];
+			ItemStats stats = itemManager.getItemStats(i[0]);
+			ItemEquipmentStats e = stats == null ? null : stats.getEquipment();
+			if (e == null || (e.getAstab() == 0 && e.getAslash() == 0 && e.getAcrush() == 0 && e.getAmagic() == 0 && e.getArange() == 0
+				&& e.getDstab() == 0 && e.getDslash() == 0 && e.getDcrush() == 0 && e.getDmagic() == 0 && e.getDrange() == 0
+				&& e.getStr() == 0 && e.getRstr() == 0 && e.getMdmg() == 0 && e.getPrayer() == 0))
+			{
+				killRules.statless.add(KillRules.key(itemManager.getItemComposition(i[0]).getName()));
+			}
+		}
+		killRules.worth(gp);
 	}
 
 	private List<String> bag()
@@ -1126,7 +1181,7 @@ public class CabbingoPlugin extends Plugin
 	private void watchGear(String player)
 	{
 		Wants w = wants;
-		boolean kcRules = w != null && w.kc.stream().anyMatch(g -> g.gear != null || g.carry != null);
+		boolean kcRules = w != null && w.kc.stream().anyMatch(g -> g.gear != null || g.carry != null || g.maxValue != null);
 		boolean events = w != null && w.events != null && !w.events.isEmpty();
 		if (player == null || (!kcRules && !events))
 		{
@@ -1136,6 +1191,7 @@ public class CabbingoPlugin extends Plugin
 		}
 		Map<String, String> worn = worn();
 		List<String> bag = bag();
+		lookAtGear(worn);
 		// a random event's rules hold for every kill too
 		killRules.saw(worn, bag);
 		Map<String, Set<String>> now = new HashMap<>();
@@ -1149,7 +1205,7 @@ public class CabbingoPlugin extends Plugin
 			{
 				continue;
 			}
-			for (String line : KillRules.broken(ev, now, bag, bag))
+			for (String line : KillRules.broken(ev, now, bag, bag, killRules.statless, killRules.worthNow()))
 			{
 				lines.add(KillRules.eventLine(line));
 				first = first == null ? ev : first;

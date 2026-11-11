@@ -139,4 +139,54 @@ public class KillRulesTest
 		assertTrue(r.kill(goals, "The Whisperer", Collections.emptyList(), helmed, events, 100).isEmpty());
 		assertEquals(3, whisperer.left);
 	}
+
+	@Test
+	public void potionsStatsQuiverAndValue()
+	{
+		// potions by name without the dose, carried or drunk since the last kill
+		KillRules.Food prayerOnly = new KillRules.Food();
+		prayerOnly.mode = "only";
+		prayerOnly.items = Collections.singletonList("Prayer potion(4)");
+		KillRules.Carried brew = new KillRules.Carried("Saradomin brew(3)", false, true);
+		KillRules.Carried prayer = new KillRules.Carried("Prayer potion(1)", false, true);
+		assertNull(KillRules.broken(prayerOnly, Arrays.asList(prayer, RUNES), Collections.emptyList(), true));
+		assertEquals("Saradomin brew(3)", KillRules.broken(prayerOnly, Collections.singletonList(prayer), Collections.singletonList("Saradomin brew(3)"), true));
+		KillRules.Food none = new KillRules.Food();
+		none.mode = "none";
+		assertEquals("Saradomin brew(3)", KillRules.broken(none, Arrays.asList(SHARK, brew), Collections.emptyList(), true));
+		assertNull("food is no potion", KillRules.broken(none, Collections.singletonList(SHARK), Collections.emptyList(), true));
+
+		// a slot without stats, the quiver's slot, and what the gear may be worth
+		KillRules.Rules r = new KillRules.Rules();
+		r.gear = new java.util.HashMap<>();
+		KillRules.Items noStats = new KillRules.Items();
+		noStats.mode = "nostats";
+		r.gear.put("head", noStats);
+		KillRules.Items dragon = new KillRules.Items();
+		dragon.mode = "only";
+		dragon.items = Collections.singletonList("Dragon arrow");
+		r.gear.put("quiver", dragon);
+		r.maxValue = 20_000_000L;
+		java.util.Set<String> statless = Collections.singleton("chef's hat");
+		Map<String, java.util.Set<String>> worn = new java.util.HashMap<>();
+		worn.put("head", Collections.singleton("Chef's hat"));
+		worn.put("quiver", Collections.singleton("Dragon arrow"));
+		assertTrue(KillRules.broken(r, worn, Collections.emptyList(), Collections.emptyList(), statless, 20_000_000).isEmpty());
+		worn.put("head", new java.util.HashSet<>(Arrays.asList("Chef's hat", "Serpentine helm")));
+		worn.put("quiver", Collections.singleton("Amethyst arrow"));
+		assertEquals(Arrays.asList("Head: an item without stats", "Quiver: only Dragon arrow", "Gear worth at most 20,000,000 gp"),
+			KillRules.broken(r, worn, Collections.emptyList(), Collections.emptyList(), statless, 20_000_001));
+		worn.remove("head");
+		assertTrue("an empty slot is no item without stats", KillRules.broken(r, worn, Collections.emptyList(), Collections.emptyList(), statless, 0).contains("Head: an item without stats"));
+
+		// the most the gear was worth since the last kill counts, not what it is worth at the kill
+		KillRules.Goal vork = goal("v", "Vorkath", 5, null);
+		vork.maxValue = 1_000L;
+		List<KillRules.Goal> goals = Collections.singletonList(vork);
+		KillRules k = new KillRules();
+		k.worth(5_000);
+		k.worth(500);
+		assertEquals("Gear worth at most 1,000 gp", k.kill(goals, "Vorkath", Collections.emptyList(), Collections.emptyMap(), 0).get(vork));
+		assertTrue("the next kill starts from the worth now", k.kill(goals, "Vorkath", Collections.emptyList(), Collections.emptyMap(), 1).isEmpty());
+	}
 }
