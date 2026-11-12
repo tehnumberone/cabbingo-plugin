@@ -35,16 +35,16 @@ public class KillBatchTest
 	}
 
 	@Test
-	public void dueAMinuteAfterTheFirstKill()
+	public void dueAWaitAfterTheFirstKill()
 	{
 		KillBatch b = new KillBatch();
 		assertFalse(b.due(0));
 		b.add("Bob", "Zulrah", "NPC", drop(1, "Zulrah's scales", 100), 1000);
 		b.add("Bob", "Zulrah", "NPC", drop(1, "Zulrah's scales", 100), 50_000);
-		assertFalse(b.due(60_999));
-		assertTrue(b.due(61_000));
+		assertFalse(b.due(1000 + KillBatch.WAIT - 1));
+		assertTrue(b.due(1000 + KillBatch.WAIT));
 		assertEquals(2, b.take().kills);
-		assertFalse(b.due(200_000));
+		assertFalse(b.due(1000 + 3 * KillBatch.WAIT));
 	}
 
 	@Test

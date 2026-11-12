@@ -1,9 +1,12 @@
 package com.cabbingo;
 
+import java.awt.Color;
+import net.runelite.client.config.Alpha;
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;
 import net.runelite.client.config.ConfigItem;
 import net.runelite.client.config.Range;
+import net.runelite.client.config.Units;
 
 @ConfigGroup(CabbingoConfig.GROUP)
 public interface CabbingoConfig extends Config
@@ -80,6 +83,75 @@ public interface CabbingoConfig extends Config
 	default boolean testFlip()
 	{
 		return false;
+	}
+
+	@ConfigItem(
+		keyName = "boardButton",
+		name = "Board button",
+		description = "Shows the button that opens your bingo board",
+		position = 6
+	)
+	default boolean boardButton()
+	{
+		return true;
+	}
+
+	// a left click goes to the game under the button; the board opens from its right-click menu only
+	@ConfigItem(
+		keyName = "boardRightClick",
+		name = "Open board on right-click only",
+		description = "Left clicks go through the button to the game",
+		position = 7
+	)
+	default boolean boardRightClick()
+	{
+		return false;
+	}
+
+	// off: a picked tile's details stay until that tile is clicked again
+	@ConfigItem(
+		keyName = "unpickOutside",
+		name = "Hide tile details on outside click",
+		description = "A click on the board outside a tile hides the picked tile's details",
+		position = 8
+	)
+	default boolean unpickOutside()
+	{
+		return true;
+	}
+
+	// the board's tile size: dragging the board's edges and corners sets it too; drawn smaller while the game is too
+	// small for it (BoardOverlay.largestTile)
+	@Range(min = 16, max = 96)
+	@Units(Units.PIXELS)
+	@ConfigItem(
+		keyName = "boardTile",
+		name = "Board tile size",
+		description = "The size of a tile on your bingo board; dragging the board's edges and corners changes it too",
+		position = 9
+	)
+	default int boardTile()
+	{
+		return 46;
+	}
+
+	@Alpha
+	@ConfigItem(
+		keyName = "background",
+		name = "Board background",
+		description = "The colour of your bingo board and its button",
+		position = 9
+	)
+	default Color background()
+	{
+		return new Color(62, 53, 41, 245);
+	}
+
+	// the board's details column shows (the fold in its top bar, or Hide details / Show details on its right-click)
+	@ConfigItem(keyName = "showDetails", name = "", description = "", hidden = true)
+	default boolean showDetails()
+	{
+		return true;
 	}
 
 	// the start of the last bingo the player was welcomed to

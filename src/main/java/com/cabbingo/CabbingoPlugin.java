@@ -52,6 +52,9 @@ import net.runelite.api.WorldType;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.events.ChatMessage;
+import net.runelite.api.MenuEntry;
+import net.runelite.api.MenuAction;
+import net.runelite.api.events.PostMenuSort;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.MenuOptionClicked;
@@ -70,6 +73,7 @@ import net.runelite.client.game.ItemEquipmentStats;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
 import net.runelite.client.game.ItemStats;
+import net.runelite.client.input.KeyManager;
 import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -79,6 +83,8 @@ import net.runelite.client.ui.DrawManager;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.infobox.InfoBox;
 import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
+import net.runelite.client.ui.JagexColors;
+import net.runelite.client.util.ColorUtil;
 import net.runelite.client.util.Text;
 import net.runelite.http.api.loottracker.LootRecordType;
 import okhttp3.CacheControl;
@@ -131,6 +137,7 @@ public class CabbingoPlugin extends Plugin
 	@Inject private AudioPlayer audioPlayer;
 	@Inject private OverlayManager overlayManager;
 	@Inject private MouseManager mouseManager;
+	@Inject private KeyManager keyManager;
 	// the board window and its button (2026-11-12)
 	@Inject private BoardOverlay boardOverlay;
 	@Inject private BoardButton boardButton;
@@ -140,7 +147,7 @@ public class CabbingoPlugin extends Plugin
 	// The team's live line (the server's TeamPush): "finished" when the team finishes a side, so a teammate's popup comes
 	// at once (user, 2026-11-02). Open while logged in during the bingo; the minute poll stays for when it is down.
 	private OkHttpClient pushHttp;
-	private WebSocket push;
+	private volatile WebSocket push;
 	private long pushAgain; // the next try after it dropped or could not open
 	private long pushWait = 60_000; // doubles per failed try, up to half an hour
 	// A pet message waits a few ticks for the collection log line that names the pet.
@@ -150,7 +157,7 @@ public class CabbingoPlugin extends Plugin
 	// Skilling tiles: what the player gathered or made, sent every few minutes (SkillCounter). XP per skill as last seen,
 	// the skills that gained XP this tick and last, and the backpack as it was and what it gained a tick ago.
 	private final SkillCounter skills = new SkillCounter();
-	// Kills of one source go out together, a minute after the first (KillBatch)
+	// Kills of one source go out together, two minutes after the first (KillBatch)
 	private final KillBatch kills = new KillBatch();
 	// Kill count tiles: the kills that kept to a tile's food rule (KillRules), and who made them
 	private final KillRules killRules = new KillRules();
@@ -257,7 +264,9 @@ public class CabbingoPlugin extends Plugin
 		overlayManager.add(boardOverlay);
 		overlayManager.add(boardButton);
 		mouseManager.registerMouseListener(boardOverlay);
+		mouseManager.registerMouseWheelListener(boardOverlay);
 		mouseManager.registerMouseListener(boardButton);
+		keyManager.registerKeyListener(boardOverlay);
 		fetchWants();
 	}
 
@@ -271,8 +280,10 @@ public class CabbingoPlugin extends Plugin
 		overlayManager.remove(boardOverlay);
 		overlayManager.remove(boardButton);
 		mouseManager.unregisterMouseListener(boardOverlay);
+		mouseManager.unregisterMouseWheelListener(boardOverlay);
 		mouseManager.unregisterMouseListener(boardButton);
-		boardOverlay.show(null, null);
+		keyManager.unregisterKeyListener(boardOverlay);
+		boardOverlay.show(null, null, 0, null);
 		wants = null;
 		skills.goals(Collections.emptyList(), null);
 		petTicks = -1;
@@ -300,12 +311,52 @@ public class CabbingoPlugin extends Plugin
 			closePush();
 			fetchWants();
 		}
+		else if ("boardTile".equals(e.getKey()))
+		{
+			boardOverlay.tileSize(config.boardTile());
+		}
 		else if (SOUND_KEYS.contains(e.getKey()))
 		{
 			// a try of the picked sound
 			boolean flip = "flipSound".equals(e.getKey()) || "testFlip".equals(e.getKey());
 			clientThread.invoke(() -> playSound(flip ? config.flipSound() : config.sound()));
 		}
+	}
+
+	// The board window's and button's menus. Over the window: Hide details / Show details. The game's own entries stay
+	// as they are (Jagex's rules forbid removing attack or player options; the window takes its clicks itself,
+	// BoardOverlay, 2026-11-12). Over the button: Open / Close Bingo board, with or without shift (RuneLite shows an
+	// overlay's own entries only with shift), unless an interface covers it.
+	@Subscribe
+	public void onPostMenuSort(PostMenuSort e)
+	{
+		net.runelite.api.Point mouse = client.getMouseCanvasPosition();
+		if (mouse == null || client.isMenuOpen())
+		{
+			return;
+		}
+		MenuEntry[] entries = client.getMenuEntries();
+		if (boardOverlay.covers(mouse.getX(), mouse.getY()))
+		{
+			menuEntry(boardOverlay.details() ? "Hide details" : "Show details", boardOverlay::toggleDetails);
+			return;
+		}
+		boardButton.covered = Arrays.stream(entries).anyMatch(m -> m.getWidget() != null);
+		if (boardButton.hovered(mouse.getX(), mouse.getY()))
+		{
+			menuEntry(boardOverlay.isOpen() ? "Close" : "Open", boardOverlay::toggle);
+		}
+	}
+
+	// one of ours, below the game's left-click option
+	private void menuEntry(String option, Runnable action)
+	{
+		client.getMenu().createMenuEntry(-1)
+			.setOption(option)
+			.setTarget(ColorUtil.wrapWithColorTag("Bingo board", JagexColors.MENU_TARGET))
+			.setType(MenuAction.RUNELITE)
+			.setDeprioritized(true)
+			.onClick(m -> action.run());
 	}
 
 	@Subscribe
@@ -320,7 +371,7 @@ public class CabbingoPlugin extends Plugin
 			closePush();
 			if (e.getGameState() == GameState.LOGIN_SCREEN)
 			{
-				boardOverlay.show(null, null);
+				boardOverlay.show(null, null, 0, null);
 			}
 			sendKills(kills.take());
 			sendKc();
@@ -355,8 +406,9 @@ public class CabbingoPlugin extends Plugin
 		{
 			return;
 		}
+		// (XP Updater's TempleOSRS box is off by default, and it sends only past 10,000 XP gained)
 		if ("true".equals(configManager.getConfiguration("runelite", "xpupdaterplugin"))
-			&& !"false".equals(configManager.getConfiguration("xpupdater", "templeosrs")))
+			&& "true".equals(configManager.getConfiguration("xpupdater", "templeosrs")) && gained > 10_000)
 		{
 			return;
 		}
@@ -385,8 +437,8 @@ public class CabbingoPlugin extends Plugin
 		return w != null && now >= w.start - HOUR && now <= w.end + HOUR;
 	}
 
-	// Tiles of the day and team changes reach the plugin within a minute (refreshWants).
-	// What was gathered or made goes to the server every five minutes, in one post per skill; a minute after the last
+	// Tiles of the day and team changes reach the plugin through the live line, else the poll (refreshWants).
+	// What was gathered or made goes to the server every five minutes, in one post per skill; two minutes after the last
 	// item a tile wants, when sooner (onGameTick).
 	@Schedule(period = 5, unit = ChronoUnit.MINUTES, asynchronous = true)
 	public void sendSkills()
@@ -531,12 +583,26 @@ public class CabbingoPlugin extends Plugin
 		xpNow = new HashSet<>();
 	}
 
-	// A poll a minute per logged-in player, for when the live line (openPush) is down: a finish still pops up within a
-	// minute. On the loot account that is ~1.5k requests a day per player.
+	// The poll, for what the live line (openPush) does not bring: every minute while it is down, so a finish still pops
+	// up within a minute; every 5 minutes while it is up (it brings finishes and board changes); every 30 minutes outside
+	// the bingo (a date can still move); never for a key the server no longer knows, until a login or another URL asks.
+	// It was every minute always, ~1.5k requests a day per logged-in player, also long after the bingo (2026-11-12).
+	private volatile long lastFetch;
+	private volatile boolean gone;
+
 	@Schedule(period = 1, unit = ChronoUnit.MINUTES, asynchronous = true)
 	public void refreshWants()
 	{
-		if (client.getGameState() == GameState.LOGGED_IN)
+		if (client.getGameState() != GameState.LOGGED_IN || gone)
+		{
+			return;
+		}
+		Wants w = wants;
+		long now = System.currentTimeMillis();
+		boolean during = w == null || (now >= w.start - HOUR && now <= w.end + 24 * HOUR);
+		long every = !during ? 30 * 60_000 : push != null ? 5 * 60_000 : 60_000;
+		// (a few seconds early: the schedule and the last answer drift a little)
+		if (now - lastFetch >= every - 5_000)
 		{
 			fetchWants();
 		}
@@ -620,13 +686,14 @@ public class CabbingoPlugin extends Plugin
 		if (url == null)
 		{
 			wants = null;
-			boardOverlay.show(null, null);
+			boardOverlay.show(null, null, 0, null);
 			skills.goals(Collections.emptyList(), null);
 			return;
 		}
 		// never into RuneLite's disk cache: two clients on one computer asking at the same moment (a live line's
 		// "finished") failed to rename the same cache file, and that answer was lost (2026-11-03)
 		Request request = new Request.Builder().url(url).cacheControl(new CacheControl.Builder().noStore().build()).build();
+		lastFetch = System.currentTimeMillis();
 		http.newCall(request).enqueue(new Callback()
 		{
 			@Override
@@ -641,6 +708,7 @@ public class CabbingoPlugin extends Plugin
 				try (response)
 				{
 					Wants w = response.isSuccessful() ? gson.fromJson(response.body().charStream(), Wants.class) : null;
+					gone = response.code() == 404; // the team's key is gone: no more polls
 					wants = w;
 					showBoard(w);
 					skills.goals(w == null || w.skill == null ? Collections.emptyList() : w.skill, w == null ? null : w.rev);
@@ -659,7 +727,7 @@ public class CabbingoPlugin extends Plugin
 	{
 		long now = System.currentTimeMillis();
 		boolean on = w != null && client.getGameState() == GameState.LOGGED_IN && now >= w.start && now <= w.end + 24 * HOUR;
-		boardOverlay.show(on ? w.board : null, w == null ? null : w.name);
+		boardOverlay.show(on ? w.board : null, w == null ? null : w.name, w == null ? 0 : w.end, w == null ? null : w.finished);
 	}
 
 	// The first login after a bingo starts: a welcome. Only when logged in, or the welcome could go to a login nobody sees.
@@ -956,7 +1024,7 @@ public class CabbingoPlugin extends Plugin
 		{
 			openPush();
 		}
-		// a minute after its first kill, or once the bingo window has closed
+		// two minutes after its first kill, or once the bingo window has closed
 		if (kills.due(System.currentTimeMillis()) || !inBingo())
 		{
 			sendKills(kills.take());
@@ -1101,7 +1169,11 @@ public class CabbingoPlugin extends Plugin
 			backpack.add(new KillRules.Carried(c.getName(), actions.contains("Eat"), actions.contains("Drink")));
 		}
 		kcRsn = rsn;
+		Map<KillRules.Goal, Integer> left = new HashMap<>();
+		goals.forEach(g -> left.put(g, g.left));
 		Map<KillRules.Goal, String> broke = killRules.kill(goals, source, backpack, worn(), events(wants), System.currentTimeMillis());
+		// the kills that counted show on the board window now; the server has them a minute later (KillBatch)
+		goals.stream().filter(g -> g.left < left.get(g)).forEach(g -> boardOverlay.counted(g.id));
 		log.debug("Cabbingo: kill of {}, kill count tiles {}, broke {}", source, goals.stream().map(g -> g.source + "/" + g.left).collect(Collectors.toList()), broke.values());
 		broke.forEach((g, why) ->
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",

@@ -37,6 +37,8 @@ tasks.withType(JavaCompile).configureEach {
 tasks.register('run', JavaExec) {
 	classpath = sourceSets.test.runtimeClasspath
 	mainClass = pluginMainClass
+	// same Java 11 the RuneLite launcher ships; on newer Java RuneLite logs NoSuchFieldException: root at start
+	javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(11) }
 
 	// (the RuneLite launcher opens this too; without it RuneLite logs a harmless InaccessibleObjectException at start)
 	jvmArgs "-ea", "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED"

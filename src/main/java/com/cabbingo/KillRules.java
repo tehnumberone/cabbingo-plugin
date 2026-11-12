@@ -14,11 +14,11 @@ import java.util.concurrent.ConcurrentHashMap;
 
 // Kill count tiles (2026-11-06): kills of one monster that count only within the tile's food rule. On each kill of a
 // goal's monster the plugin checks the backpack and what was eaten since the last kill; a kill that broke the rule is
-// told in the chat and never sent. The kills that kept to it go out together, a minute after the first, or at once when
+// told in the chat and never sent. The kills that kept to it go out together, two minutes after the first, or at once when
 // they finish the tile.
 class KillRules
 {
-	static final long WAIT = 60_000;
+	static final long WAIT = 120_000; // each post that counts syncs the whole team: not more often (2026-11-12)
 
 	/**
 	 * Gear and inventory rules (GearRules in models/bingo.ts), of a kill count side or a random event. gear: slot (head,

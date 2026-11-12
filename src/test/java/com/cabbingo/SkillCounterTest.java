@@ -60,18 +60,18 @@ public class SkillCounterTest
 	}
 
 	@Test
-	public void wantedItemsAreDueAMinuteAfterTheLastOne()
+	public void wantedItemsAreDueAWaitAfterTheLastOne()
 	{
 		SkillCounter c = new SkillCounter();
 		c.goals(goals(0, "yew logs"), "a");
 		long now = System.currentTimeMillis();
 		c.message("You get some logs.");
-		assertFalse(c.due(now + 60_000)); // nobody wants plain logs: the five minute batch
+		assertFalse(c.due(now + SkillCounter.WAIT)); // nobody wants plain logs: the five minute batch
 		c.message("You get some yew logs.");
 		assertFalse(c.due(now + 30_000));
-		assertTrue(c.due(System.currentTimeMillis() + 60_000));
+		assertTrue(c.due(System.currentTimeMillis() + SkillCounter.WAIT));
 		c.take();
-		assertFalse(c.due(now + 120_000));
+		assertFalse(c.due(now + 2 * SkillCounter.WAIT));
 		// the log that finishes a side goes out at once, counted over the side's logs together
 		c.goals(goals(3, "yew logs", "logs"), "b");
 		c.message("You get some yew logs.");

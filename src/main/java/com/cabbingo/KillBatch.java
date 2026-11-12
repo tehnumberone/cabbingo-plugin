@@ -9,8 +9,9 @@ import java.util.Map;
 // cares about never joins one; the plugin sends that kill alone, with its screenshot.
 class KillBatch
 {
-	// Short on purpose: a RuneLite crash loses at most this much
-	static final long WAIT = 60_000;
+	// Short on purpose: a RuneLite crash loses at most this much. Two minutes (was one) halves the posts and the loot
+	// database writes of slow kills, a boss a minute or two each (2026-11-12)
+	static final long WAIT = 120_000;
 	// The server counts at most this many kills in one post
 	static final int MAX = 100;
 

@@ -37,7 +37,7 @@ class SkillCounter
 
 	private final Map<String, Map<String, Integer>> counts = new LinkedHashMap<>();
 	// What Skilling tiles want, from the server: groups of items (lower case) and how many more of them, mixed, finish
-	// a side (0: never on their own). The counts go out a minute after the last wanted item, not at the next batch, and
+	// a side (0: never on their own). The counts go out two minutes after the last wanted item, not at the next batch, and
 	// at once when a group has its number (2026-11-03).
 	// marks: the counts still to go at which a screenshot goes along, at 25, 50, 75 and 100% of the group (2026-11-04):
 	// the proof of a tile only the plugin counts. The send goes out at once then too.
@@ -124,10 +124,13 @@ class SkillCounter
 		return sum;
 	}
 
-	// A side's last item, a mark, or a minute without a new wanted item since the last one: time to send.
+	// A side's last item, a mark, or WAIT without a new wanted item since the last one: time to send. Two minutes (was
+	// one): each post that counts syncs the whole team (2026-11-12).
+	static final long WAIT = 120_000;
+
 	synchronized boolean due(long now)
 	{
-		return finishes || !shots.isEmpty() || (wantedAt > 0 && now - wantedAt >= 60_000);
+		return finishes || !shots.isEmpty() || (wantedAt > 0 && now - wantedAt >= WAIT);
 	}
 
 	// A game message that names a log, fish or bagged gem: counted, true.

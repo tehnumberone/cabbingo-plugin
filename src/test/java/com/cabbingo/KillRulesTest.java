@@ -60,8 +60,8 @@ public class KillRulesTest
 
 		Map<KillRules.Goal, String> broke = r.kill(goals, "venator", Collections.singletonList(KARAMBWAN), 0);
 		assertEquals(Collections.singletonMap(noKarambwan, "Cooked karambwan"), broke);
-		assertFalse(r.due(59_999));
-		assertTrue("a minute after the first kill", r.due(60_000));
+		assertFalse(r.due(KillRules.WAIT - 1));
+		assertTrue("WAIT after the first kill", r.due(KillRules.WAIT));
 
 		r.ate("Cooked karambwan");
 		assertEquals("eaten since the last kill", 1, r.kill(goals, "Venator", Collections.emptyList(), 1000).size());
