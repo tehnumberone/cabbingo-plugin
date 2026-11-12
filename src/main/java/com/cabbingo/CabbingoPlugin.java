@@ -919,7 +919,7 @@ public class CabbingoPlugin extends Plugin
 		// Blast Furnace popup waited for minutes, 2026-11-02).
 		long now = System.currentTimeMillis();
 		String busy = popupNode != null ? "ours" : showing(POPUP, 1) ? "game popup" : showing(InterfaceID.WELCOME_SCREEN, 0) ? "welcome screen"
-			: modalOpen() ? "open window" : now < soundUntil ? "sound" : null;
+			: modalOpen(client) ? "open window" : now < soundUntil ? "sound" : null;
 		if (busy != null)
 		{
 			if (popupWaiting == 0)
@@ -967,8 +967,9 @@ public class CabbingoPlugin extends Plugin
 		});
 	}
 
-	// a window in the middle of the screen (bank, shop, Blast Furnace bars): the game's own windows the player closes
-	private boolean modalOpen()
+	// a window in the middle of the screen (bank, shop, Blast Furnace bars): the game's own windows the player closes.
+	// Client thread only.
+	static boolean modalOpen(Client client)
 	{
 		for (WidgetNode node : client.getComponentTable())
 		{

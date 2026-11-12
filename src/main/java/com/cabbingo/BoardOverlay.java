@@ -342,6 +342,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 			return null;
 		}
 		keepOut = sidePanel();
+		gameWindow = CabbingoPlugin.modalOpen(client);
 		// drawn at the saved size, smaller while the game is too small for it (largestTile); a bigger game grows it back
 		int n = b.size, t = Math.min(tile, largestTile(b.size));
 		drawn = t;
@@ -993,6 +994,8 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		InterfaceID.ToplevelPreEoc.SIDE_PANELS,
 	};
 	private volatile Rectangle keepOut;
+	// a game window (bank, shop, settings) is open: Escape closes that one first, the board only after (user, 2026-11-13)
+	private volatile boolean gameWindow;
 
 	private Rectangle sidePanel()
 	{
@@ -1259,7 +1262,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	@Override
 	public void keyPressed(KeyEvent e)
 	{
-		if (e.getKeyCode() == KeyEvent.VK_ESCAPE && shown())
+		if (e.getKeyCode() == KeyEvent.VK_ESCAPE && shown() && !gameWindow)
 		{
 			open = false;
 			e.consume();
