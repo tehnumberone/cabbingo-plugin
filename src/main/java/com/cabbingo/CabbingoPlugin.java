@@ -70,11 +70,13 @@ import net.runelite.client.game.ItemEquipmentStats;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemStack;
 import net.runelite.client.game.ItemStats;
+import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.loottracker.LootReceived;
 import net.runelite.client.task.Schedule;
 import net.runelite.client.ui.DrawManager;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.infobox.InfoBox;
 import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
 import net.runelite.client.util.Text;
@@ -127,6 +129,11 @@ public class CabbingoPlugin extends Plugin
 	@Inject private ScheduledExecutorService executor;
 	@Inject private ConfigManager configManager;
 	@Inject private AudioPlayer audioPlayer;
+	@Inject private OverlayManager overlayManager;
+	@Inject private MouseManager mouseManager;
+	// the board window and its button (2026-11-12)
+	@Inject private BoardOverlay boardOverlay;
+	@Inject private BoardButton boardButton;
 
 	// What the team wants, from the server. Null until it answered (no key, a wrong key, offline).
 	private volatile Wants wants;
@@ -210,6 +217,7 @@ public class CabbingoPlugin extends Plugin
 		List<Finished> finished = new ArrayList<>(); // the tile sides the team finished
 		List<KillRules.Goal> kc = new ArrayList<>(); // kill count sides still open, with their food rules (2026-11-06)
 		List<KillRules.Event> events = new ArrayList<>(); // the team's random events with gear or inventory rules (2026-11-07)
+		BoardOverlay.Board board; // the in-game board; null for snakes and ladders or an older server (2026-11-12)
 		String rev; // the server's fingerprint of all this; every post's answer carries the current one (X-Rev)
 	}
 
@@ -246,6 +254,10 @@ public class CabbingoPlugin extends Plugin
 		// the sides already popped up, kept over restarts: one finished while the player was away pops up at the next login
 		String seen = configManager.getConfiguration(CabbingoConfig.GROUP, SEEN);
 		finishedSeen = seen == null ? null : seen.isEmpty() ? new HashSet<>() : new HashSet<>(Arrays.asList(seen.split(",")));
+		overlayManager.add(boardOverlay);
+		overlayManager.add(boardButton);
+		mouseManager.registerMouseListener(boardOverlay);
+		mouseManager.registerMouseListener(boardButton);
 		fetchWants();
 	}
 
@@ -256,6 +268,11 @@ public class CabbingoPlugin extends Plugin
 		sendKc();
 		closePush();
 		setRuleBox(null, Collections.emptyList());
+		overlayManager.remove(boardOverlay);
+		overlayManager.remove(boardButton);
+		mouseManager.unregisterMouseListener(boardOverlay);
+		mouseManager.unregisterMouseListener(boardButton);
+		boardOverlay.show(null, null);
 		wants = null;
 		skills.goals(Collections.emptyList(), null);
 		petTicks = -1;
@@ -301,6 +318,10 @@ public class CabbingoPlugin extends Plugin
 		else if (e.getGameState() == GameState.LOGIN_SCREEN || e.getGameState() == GameState.HOPPING)
 		{
 			closePush();
+			if (e.getGameState() == GameState.LOGIN_SCREEN)
+			{
+				boardOverlay.show(null, null);
+			}
 			sendKills(kills.take());
 			sendKc();
 			killRules.forgetEaten();
@@ -545,7 +566,7 @@ public class CabbingoPlugin extends Plugin
 			@Override
 			public void onMessage(WebSocket ws, String text)
 			{
-				if ("finished".equals(text))
+				if ("finished".equals(text) || "board".equals(text))
 				{
 					fetchWants();
 				}
@@ -599,6 +620,7 @@ public class CabbingoPlugin extends Plugin
 		if (url == null)
 		{
 			wants = null;
+			boardOverlay.show(null, null);
 			skills.goals(Collections.emptyList(), null);
 			return;
 		}
@@ -620,6 +642,7 @@ public class CabbingoPlugin extends Plugin
 				{
 					Wants w = response.isSuccessful() ? gson.fromJson(response.body().charStream(), Wants.class) : null;
 					wants = w;
+					showBoard(w);
 					skills.goals(w == null || w.skill == null ? Collections.emptyList() : w.skill, w == null ? null : w.rev);
 					if (w != null)
 					{
@@ -629,6 +652,14 @@ public class CabbingoPlugin extends Plugin
 				}
 			}
 		});
+	}
+
+	// The board window and its button: while logged in, from the bingo's start until a day after its end
+	private void showBoard(Wants w)
+	{
+		long now = System.currentTimeMillis();
+		boolean on = w != null && client.getGameState() == GameState.LOGGED_IN && now >= w.start && now <= w.end + 24 * HOUR;
+		boardOverlay.show(on ? w.board : null, w == null ? null : w.name);
 	}
 
 	// The first login after a bingo starts: a welcome. Only when logged in, or the welcome could go to a login nobody sees.
