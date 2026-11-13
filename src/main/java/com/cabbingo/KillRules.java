@@ -40,7 +40,7 @@ class KillRules
 		List<String> items = new ArrayList<>();
 	}
 
-	/** A random event of the team with rules, from..to (DinkTeam.events). */
+	/** A random event of the team with rules, from..to. */
 	static class Event extends Rules
 	{
 		String title;

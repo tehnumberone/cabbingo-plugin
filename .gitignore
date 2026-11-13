@@ -9,3 +9,6 @@ nb-configuration.xml
 nbproject/
 *.class
 bin/
+
+# Local notes, not for the repo
+plugin.md

@@ -13,7 +13,7 @@ public interface CabbingoConfig extends Config
 {
 	String GROUP = "cabbingo-bingo";
 
-	// Empty until a player pastes their team's URL, as with a Dink or Loot Logger webhook: nothing is sent before that,
+	// Empty until a player pastes their team's URL, as with a webhook: nothing is sent before that,
 	// and nowhere else after it.
 	@ConfigItem(
 		keyName = "url",

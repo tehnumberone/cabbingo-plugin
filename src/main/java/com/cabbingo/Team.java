@@ -104,7 +104,7 @@ class Team
 		return rsn != null ? rsn.replace(' ', ' ') : null;
 	}
 
-	// The URL the player pasted, as Dink and Loot Logger take a webhook: this plugin sends nowhere else. Null when it is
+	// The URL the player pasted, like a webhook: this plugin sends nowhere else. Null when it is
 	// empty or not a URL.
 	HttpUrl url()
 	{

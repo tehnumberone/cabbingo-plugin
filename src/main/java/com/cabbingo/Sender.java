@@ -34,7 +34,7 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 /**
- * Posts to the team's URL, shaped like a Dink post, with a screenshot when it matters. The answer says when the
+ * Posts to the team's URL, with a screenshot when it matters. The answer says when the
  * plugin's copy of the team is out of date (X-Rev), which sides the post finished (X-Finished), and when a post
  * needed a screenshot after all (409). A screenshot never shows the split private chat: it goes to the team's
  * Discord channel (user, 2026-11-13).
@@ -69,7 +69,7 @@ class Sender
 		this.executor = executor;
 	}
 
-	// Shaped like a Dink post, which the server already reads; Discord shows content and ignores the rest.
+	// The drop worker's post shape; Discord shows content and ignores the rest.
 	static JsonObject payload(String type, String rsn, String content, JsonObject extra)
 	{
 		JsonObject p = new JsonObject();
