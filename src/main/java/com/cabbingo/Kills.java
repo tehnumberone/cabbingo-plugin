@@ -86,6 +86,18 @@ class Kills
 		sendKc();
 	}
 
+	/**
+	 * A fresh copy of the kill count goals: the server does not have the kills still waiting here (sent up to two minutes
+	 * late), so they come off its count, or a refetch would put them back and delay the finish and its proof.
+	 */
+	void goals(Wants w)
+	{
+		if (w != null && w.kc != null)
+		{
+			w.kc.forEach(g -> g.left -= killRules.pending(g.id));
+		}
+	}
+
 	/** Logout or hop: what waits goes out, and the next kill starts with nothing eaten. */
 	void logout()
 	{
@@ -211,12 +223,16 @@ class Kills
 			return;
 		}
 		Wants w = team.wants();
+		if (w == null)
+		{
+			return; // (dropped since playing() looked)
+		}
 		// a running random event's rules hold for every tile (user, 2026-11-07): a kill that broke one still goes to the
 		// gp lists and Discord, with the rules it broke (extra.broke), and the server counts it for no tile
 		Map<String, String> worn = gear.worn();
 		List<String> bag = gear.bag();
 		List<String> broke = killRules.eventsBroken(Gear.events(w), worn, bag, System.currentTimeMillis());
-		if (w != null && w.kc != null && !w.kc.isEmpty() && !category.equals("PLAYER"))
+		if (w.kc != null && !w.kc.isEmpty() && !category.equals("PLAYER"))
 		{
 			checkKill(rsn, source, w.kc);
 		}
@@ -243,12 +259,12 @@ class Kills
 		}
 		// A screenshot where the server sends the post to the team's channel, or a tile counts its value.
 		String sourceKey = category.equals("PLAYER") ? "pvp" : source.trim().toLowerCase(Locale.ROOT);
-		Double min = w.sources.get(sourceKey);
+		Double min = w.sources == null ? null : w.sources.get(sourceKey);
 		boolean shot = wanted || value >= w.big || (min != null && value >= min);
 		if (!broke.isEmpty() && (wanted || (min != null && value >= min)))
 		{
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-				"<col=ff0000>The drop is invalidated for the tiles</col> (" + String.join(", ", broke) + ")", null);
+				"<col=ff0000>The drop is invalidated for the tiles</col> (" + Text.escapeJagex(String.join(", ", broke)) + ")", null);
 		}
 		// Such a kill, a unique, PvP and one that broke a random event go alone (the whole drop, its own proof), after the
 		// open batch; any other kill joins the batch of its source.
@@ -288,7 +304,7 @@ class Kills
 		log.debug("Cabbingo: kill of {}, kill count tiles {}, broke {}", source, goals.stream().map(g -> g.source + "/" + g.left).collect(Collectors.toList()), broke.values());
 		broke.forEach((g, why) ->
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",
-				"<col=ff0000>The kill is invalidated for the tile: " + g.title + "</col> (" + why + ")", null));
+				"<col=ff0000>The kill is invalidated for the tile: " + Text.escapeJagex(g.title) + "</col> (" + Text.escapeJagex(why) + ")", null));
 	}
 
 	// The kills that kept to their tile's food rule, per tile side: the server adds them to the tiles

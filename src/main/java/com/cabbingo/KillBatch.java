@@ -74,7 +74,7 @@ class KillBatch
 		return closed;
 	}
 
-	// A minute since the open batch's first kill
+	// WAIT since the open batch's first kill
 	synchronized boolean due(long now)
 	{
 		return open != null && now - open.first >= WAIT;

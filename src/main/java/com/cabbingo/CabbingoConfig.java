@@ -140,7 +140,7 @@ public interface CabbingoConfig extends Config
 		keyName = "background",
 		name = "Board background",
 		description = "The colour of your bingo board and its button",
-		position = 9
+		position = 10
 	)
 	default Color background()
 	{

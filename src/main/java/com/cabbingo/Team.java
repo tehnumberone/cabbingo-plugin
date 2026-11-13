@@ -9,6 +9,7 @@ import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.client.callback.ClientThread;
 import okhttp3.CacheControl;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -21,7 +22,8 @@ import okhttp3.WebSocketListener;
 
 /**
  * The player's team on the server: the Team URL, what the team wants (GET /plugin/key) and the live line that says
- * when to ask again. Each answer goes to the plugin (onWants).
+ * when to ask again. Each answer goes to the plugin (onWants), on the client thread: the popups, the board window
+ * and the goals are all changed there, never by two answers at once (a welcome showed twice, a popup could too).
  */
 @Slf4j
 @Singleton
@@ -30,6 +32,7 @@ class Team
 	static final long HOUR = 60 * 60 * 1000L;
 
 	private final Client client;
+	private final ClientThread clientThread;
 	private final CabbingoConfig config;
 	private final OkHttpClient http;
 	private final Gson gson;
@@ -51,9 +54,10 @@ class Team
 	private volatile boolean gone;
 
 	@Inject
-	Team(Client client, CabbingoConfig config, OkHttpClient http, Gson gson)
+	Team(Client client, ClientThread clientThread, CabbingoConfig config, OkHttpClient http, Gson gson)
 	{
 		this.client = client;
+		this.clientThread = clientThread;
 		this.config = config;
 		this.http = http;
 		this.gson = gson;
@@ -131,7 +135,7 @@ class Team
 		if (url == null)
 		{
 			wants = null;
-			onWants.accept(null);
+			clientThread.invoke(() -> onWants.accept(null));
 			return;
 		}
 		// never into RuneLite's disk cache: two clients on one computer asking at the same moment (a live line's
@@ -153,8 +157,11 @@ class Team
 				{
 					Wants w = response.isSuccessful() ? gson.fromJson(response.body().charStream(), Wants.class) : null;
 					gone = response.code() == 404; // the team's key is gone: no more polls
-					wants = w;
-					onWants.accept(w);
+					clientThread.invoke(() ->
+					{
+						wants = w;
+						onWants.accept(w);
+					});
 				}
 			}
 		});

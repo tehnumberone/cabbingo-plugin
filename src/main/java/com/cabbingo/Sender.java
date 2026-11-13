@@ -8,6 +8,7 @@ import java.awt.Image;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
 import javax.imageio.IIOImage;
 import javax.imageio.ImageIO;
@@ -17,6 +18,10 @@ import javax.imageio.stream.ImageOutputStream;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
+import net.runelite.api.gameval.InterfaceID;
+import net.runelite.api.widgets.Widget;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.ui.DrawManager;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -31,7 +36,8 @@ import okhttp3.Response;
 /**
  * Posts to the team's URL, shaped like a Dink post, with a screenshot when it matters. The answer says when the
  * plugin's copy of the team is out of date (X-Rev), which sides the post finished (X-Finished), and when a post
- * needed a screenshot after all (409).
+ * needed a screenshot after all (409). A screenshot never shows the split private chat: it goes to the team's
+ * Discord channel (user, 2026-11-13).
  */
 @Slf4j
 @Singleton
@@ -41,6 +47,8 @@ class Sender
 	private static final MediaType JPEG = MediaType.parse("image/jpeg");
 	private static final float JPEG_QUALITY = 0.85f;
 
+	private final Client client;
+	private final ClientThread clientThread;
 	private final Team team;
 	private final Popups popups;
 	private final OkHttpClient http;
@@ -49,8 +57,10 @@ class Sender
 	private final ScheduledExecutorService executor;
 
 	@Inject
-	Sender(Team team, Popups popups, OkHttpClient http, Gson gson, DrawManager drawManager, ScheduledExecutorService executor)
+	Sender(Client client, ClientThread clientThread, Team team, Popups popups, OkHttpClient http, Gson gson, DrawManager drawManager, ScheduledExecutorService executor)
 	{
+		this.client = client;
+		this.clientThread = clientThread;
 		this.team = team;
 		this.popups = popups;
 		this.http = http;
@@ -83,20 +93,37 @@ class Sender
 			post(url, RequestBody.create(JSON, gson.toJson(payload)), payload);
 			return;
 		}
-		drawManager.requestNextFrameListener(frame -> executor.execute(() ->
+		// on the client thread (a post's 409 answer asks from OkHttp's): the private chat is hidden for the one frame taken
+		clientThread.invoke(() ->
 		{
-			MultipartBody.Builder body = new MultipartBody.Builder().setType(MultipartBody.FORM)
-				.addFormDataPart("payload_json", gson.toJson(payload));
-			try
+			Widget pm = client.getWidget(InterfaceID.PmChat.CONTAINER);
+			boolean hide = pm != null && !pm.isHidden();
+			if (hide)
 			{
-				body.addFormDataPart("file", "screenshot.jpg", RequestBody.create(JPEG, jpeg(frame)));
+				pm.setHidden(true);
 			}
-			catch (IOException e)
+			drawManager.requestNextFrameListener(frame ->
 			{
-				log.debug("Cabbingo: no screenshot", e);
-			}
-			post(url, body.build(), null);
-		}));
+				if (hide)
+				{
+					clientThread.invoke(() -> pm.setHidden(false));
+				}
+				executor.execute(() ->
+				{
+					MultipartBody.Builder body = new MultipartBody.Builder().setType(MultipartBody.FORM)
+						.addFormDataPart("payload_json", gson.toJson(payload));
+					try
+					{
+						body.addFormDataPart("file", "screenshot.jpg", RequestBody.create(JPEG, jpeg(frame)));
+					}
+					catch (IOException e)
+					{
+						log.debug("Cabbingo: no screenshot", e);
+					}
+					post(url, body.build(), null);
+				});
+			});
+		});
 	}
 
 	// again: the post without a screenshot, sent once more with one when the server asks for it (409)
@@ -115,41 +142,49 @@ class Sender
 			@Override
 			public void onResponse(Call call, Response response)
 			{
-				// The board changed since this plugin's copy of it: ask for the new one now, not in ten minutes.
-				String rev = response.header("X-Rev");
-				Wants w = team.wants();
-				log.debug("Cabbingo: post answered {}, rev {} (had {})", response.code(), rev, w == null ? null : w.rev);
-				// sides this post finished: news even when this plugin still had them as finished
-				String added = response.header("X-Finished");
-				if (added != null)
+				try (response)
 				{
-					popups.unsee(added.split(","), sent);
-					// the answer carries the team's finished list: the popup comes now, not after another fetch
-					// (an older server sends none, and the fetch below brings it)
-					try
+					// The board changed since this plugin's copy of it: ask for the new one now, not at the next poll.
+					String rev = response.header("X-Rev");
+					Wants w = team.wants();
+					log.debug("Cabbingo: post answered {}, rev {} (had {})", response.code(), rev, w == null ? null : w.rev);
+					// sides this post finished: news even when this plugin still had them as finished
+					String added = response.header("X-Finished");
+					if (added != null)
 					{
-						Wants f = gson.fromJson(response.body().charStream(), Wants.class);
-						if (f != null && f.finished != null && !f.finished.isEmpty())
+						// the answer carries the team's finished list: the popup comes now, not after another fetch
+						// (an older server sends none, and the fetch below brings it)
+						List<Finished> finished = null;
+						try
 						{
-							popups.finished(f.finished);
+							Wants f = gson.fromJson(response.body().charStream(), Wants.class);
+							finished = f == null ? null : f.finished;
 						}
+						catch (RuntimeException e)
+						{
+							log.debug("Cabbingo: no finished list in the answer", e);
+						}
+						List<Finished> list = finished;
+						clientThread.invoke(() ->
+						{
+							popups.unsee(added.split(","), sent);
+							if (list != null && !list.isEmpty())
+							{
+								popups.finished(list);
+							}
+						});
 					}
-					catch (RuntimeException e)
+					if (rev != null && w != null && (!rev.equals(w.rev) || added != null))
 					{
-						log.debug("Cabbingo: no finished list in the answer", e);
+						w.rev = rev; // (one ask, not one per post while it is on its way)
+						team.fetch();
 					}
-				}
-				response.close();
-				if (rev != null && w != null && (!rev.equals(w.rev) || added != null))
-				{
-					w.rev = rev; // (one ask, not one per post while it is on its way)
-					team.fetch();
-				}
-				// The server knows this drop needed a screenshot (a tile item the copy did not have yet). The loot is
-				// still on the screen a moment after the kill.
-				if (response.code() == 409 && again != null)
-				{
-					send(again, true);
+					// The server knows this drop needed a screenshot (a tile item the copy did not have yet). The loot is
+					// still on the screen a moment after the kill.
+					if (response.code() == 409 && again != null)
+					{
+						send(again, true);
+					}
 				}
 			}
 		});

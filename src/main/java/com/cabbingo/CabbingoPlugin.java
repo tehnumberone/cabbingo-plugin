@@ -116,6 +116,7 @@ public class CabbingoPlugin extends Plugin
 		boardOverlay.show(null, null, 0, null);
 		team.clear();
 		skilling.goals(null);
+		skilling.reset(); // (turned on again while logged in: nothing gained meanwhile counts)
 		kills.reset();
 		popups.stop();
 	}
@@ -123,6 +124,7 @@ public class CabbingoPlugin extends Plugin
 	// A server answer (null: no team): the board window, the Skilling goals, the welcome and finished tiles
 	private void apply(Wants w)
 	{
+		kills.goals(w);
 		showBoard(w);
 		skilling.goals(w);
 		if (w != null)

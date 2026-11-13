@@ -29,9 +29,9 @@ public class KillRulesTest
 		return g;
 	}
 
-	private static final KillRules.Carried KARAMBWAN = new KillRules.Carried("Cooked karambwan", true);
-	private static final KillRules.Carried SHARK = new KillRules.Carried("Shark", true);
-	private static final KillRules.Carried RUNES = new KillRules.Carried("Rune pouch", false);
+	private static final KillRules.Carried KARAMBWAN = new KillRules.Carried("Cooked karambwan", true, false);
+	private static final KillRules.Carried SHARK = new KillRules.Carried("Shark", true, false);
+	private static final KillRules.Carried RUNES = new KillRules.Carried("Rune pouch", false, false);
 
 	@Test
 	public void foodRules()
@@ -58,21 +58,24 @@ public class KillRulesTest
 		KillRules.Goal other = goal("t3", "Vorkath", 5, null);
 		List<KillRules.Goal> goals = Arrays.asList(noKarambwan, anyFood, other);
 
-		Map<KillRules.Goal, String> broke = r.kill(goals, "venator", Collections.singletonList(KARAMBWAN), 0);
+		Map<KillRules.Goal, String> broke = r.kill(goals, "venator", Collections.singletonList(KARAMBWAN), Collections.emptyMap(), Collections.emptyList(), 0);
 		assertEquals(Collections.singletonMap(noKarambwan, "Cooked karambwan"), broke);
 		assertFalse(r.due(KillRules.WAIT - 1));
 		assertTrue("WAIT after the first kill", r.due(KillRules.WAIT));
 
 		r.ate("Cooked karambwan");
-		assertEquals("eaten since the last kill", 1, r.kill(goals, "Venator", Collections.emptyList(), 1000).size());
-		assertTrue("the next kill starts clean", r.kill(goals, "Venator", Collections.emptyList(), 2000).isEmpty());
-		r.kill(goals, "Venator", Collections.emptyList(), 3000);
+		assertEquals("eaten since the last kill", 1, r.kill(goals, "Venator", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 1000).size());
+		assertTrue("the next kill starts clean", r.kill(goals, "Venator", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 2000).isEmpty());
+		r.kill(goals, "Venator", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 3000);
 		assertTrue("t1 finished: send now", r.due(3000));
+		assertEquals("a refetched goal's left comes down by the kills not sent yet", 4, r.pending("t2"));
+		assertEquals(0, r.pending("t3"));
 		Map<String, Integer> taken = r.take();
+		assertEquals(0, r.pending("t2"));
 		assertEquals(Integer.valueOf(2), taken.get("t1"));
 		assertEquals(Integer.valueOf(4), taken.get("t2"));
 		assertNull(taken.get("t3"));
-		assertTrue(r.kill(goals, "Venator", Collections.emptyList(), 4000).isEmpty());
+		assertTrue(r.kill(goals, "Venator", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 4000).isEmpty());
 		assertNull("a finished goal takes no more", r.take().get("t1"));
 		assertFalse(r.due(Long.MAX_VALUE));
 
@@ -80,18 +83,18 @@ public class KillRulesTest
 		tomorrow.from = 10_000;
 		tomorrow.to = 20_000;
 		List<KillRules.Goal> day = Collections.singletonList(tomorrow);
-		r.kill(day, "Venator", Collections.emptyList(), 9_999);
-		r.kill(day, "Venator", Collections.emptyList(), 20_000);
+		r.kill(day, "Venator", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 9_999);
+		r.kill(day, "Venator", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 20_000);
 		assertTrue("a tile of the day counts during its day only", r.take().isEmpty());
-		r.kill(day, "Venator", Collections.emptyList(), 10_000);
+		r.kill(day, "Venator", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 10_000);
 		assertEquals(Integer.valueOf(1), r.take().get("t4"));
 
 		KillRules.Goal big = goal("t5", "Venator", 8, null);
 		big.marks = new int[]{6, 4, 2, 0};
 		List<KillRules.Goal> bigs = Collections.singletonList(big);
-		r.kill(bigs, "Venator", Collections.emptyList(), 0);
+		r.kill(bigs, "Venator", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 0);
 		assertFalse("no mark: waits a minute, no screenshot", r.due(1) || r.shot());
-		r.kill(bigs, "Venator", Collections.emptyList(), 1);
+		r.kill(bigs, "Venator", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 1);
 		assertTrue("6 to go is a mark: at once, with a screenshot", r.due(1) && r.shot());
 		r.take();
 		assertFalse(r.shot());
@@ -110,8 +113,8 @@ public class KillRulesTest
 		sand.items = Arrays.asList("Sandstone (1kg)", "Sandstone (5kg)");
 		hat.carry = sand;
 		Map<String, java.util.Set<String>> helm = Collections.singletonMap("head", Collections.singleton("Helm of neitiznot"));
-		assertEquals(Arrays.asList("No hat allowed", "Carry Sandstone (1kg) or Sandstone (5kg)"), KillRules.broken(hat, helm, Collections.emptyList(), Collections.emptyList()));
-		assertTrue(KillRules.broken(hat, Collections.emptyMap(), Collections.singletonList("sandstone (5kg)"), Collections.emptyList()).isEmpty());
+		assertEquals(Arrays.asList("No hat allowed", "Carry Sandstone (1kg) or Sandstone (5kg)"), KillRules.broken(hat, helm, Collections.emptyList(), Collections.emptyList(), Collections.emptySet(), 0));
+		assertTrue(KillRules.broken(hat, Collections.emptyMap(), Collections.singletonList("sandstone (5kg)"), Collections.emptyList(), Collections.emptySet(), 0).isEmpty());
 
 		// a kill with Tumeken's shadow worn at any time since the last kill breaks "not"
 		KillRules.Goal whisperer = goal("w", "The Whisperer", 5, null);
@@ -123,9 +126,9 @@ public class KillRulesTest
 		List<KillRules.Goal> goals = Collections.singletonList(whisperer);
 		KillRules r = new KillRules();
 		r.saw(Collections.singletonMap("weapon", "Tumeken's shadow"), Collections.emptyList());
-		Map<KillRules.Goal, String> broke = r.kill(goals, "The Whisperer", Collections.emptyList(), Collections.singletonMap("weapon", "Sanguinesti staff"), 0);
+		Map<KillRules.Goal, String> broke = r.kill(goals, "The Whisperer", Collections.emptyList(), Collections.singletonMap("weapon", "Sanguinesti staff"), Collections.emptyList(), 0);
 		assertEquals("No Tumeken's shadow allowed", broke.get(whisperer));
-		assertTrue("the next kill starts clean", r.kill(goals, "The Whisperer", Collections.emptyList(), Collections.singletonMap("weapon", "Sanguinesti staff"), 1).isEmpty());
+		assertTrue("the next kill starts clean", r.kill(goals, "The Whisperer", Collections.emptyList(), Collections.singletonMap("weapon", "Sanguinesti staff"), Collections.emptyList(), 1).isEmpty());
 
 		// a running random event's rules hold for the tile too; one that ended does not
 		KillRules.Event noHat = new KillRules.Event();
@@ -186,7 +189,7 @@ public class KillRulesTest
 		KillRules k = new KillRules();
 		k.worth(5_000);
 		k.worth(500);
-		assertEquals("Gear worth at most 1,000 gp", k.kill(goals, "Vorkath", Collections.emptyList(), Collections.emptyMap(), 0).get(vork));
-		assertTrue("the next kill starts from the worth now", k.kill(goals, "Vorkath", Collections.emptyList(), Collections.emptyMap(), 1).isEmpty());
+		assertEquals("Gear worth at most 1,000 gp", k.kill(goals, "Vorkath", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 0).get(vork));
+		assertTrue("the next kill starts from the worth now", k.kill(goals, "Vorkath", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 1).isEmpty());
 	}
 }

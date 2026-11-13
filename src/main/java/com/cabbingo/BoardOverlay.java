@@ -66,8 +66,8 @@ import okhttp3.Response;
  * The team's bingo board in a window over the game (view only): row markers on the left, column markers under the
  * grid, details on the right. Dragging the top bar moves it; the left and right edges and the two bottom corners
  * scale it (the tile size, kept in the config with the position). RuneLite's own Alt-drag does not move it.
- * Escape closes it. Over the window only its own tooltip shows (the tile's name); the game's menu is emptied by the plugin
- * (covers).
+ * Escape closes it. Over the window only its own tooltip shows (the tile's name); the game's menu keeps its entries and
+ * the plugin adds Hide / Show details (covers).
  */
 @Singleton
 class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener, KeyListener

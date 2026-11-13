@@ -85,10 +85,13 @@ class Skilling
 		skills.goals(w == null || w.skill == null ? Collections.emptyList() : w.skill, w == null ? null : w.rev);
 	}
 
-	/** After a logout or hop: the next login starts from scratch. */
+	/** After a logout or hop, or with the plugin off: the next tick starts from scratch. */
 	void reset()
 	{
 		backpack = null;
+		backpackGained = new HashMap<>();
+		xpNow = new HashSet<>();
+		xpBefore = new HashSet<>();
 		sackBefore = -1;
 		barsBefore.clear();
 		herbVarbit = -1;

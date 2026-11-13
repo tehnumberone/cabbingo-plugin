@@ -70,14 +70,9 @@ class KillRules
 
 	/**
 	 * The rules broken, one line each in gearLines' words. worn: per slot every item it held (during a kill: since the
-	 * last one; empty for nothing); bag: the inventory now; bagSeen: everything it held (the same as bag outside a kill).
+	 * last one; empty for nothing); bag: the inventory now; bagSeen: everything it held (the same as bag outside a kill);
+	 * statless: the names (key) of items without combat stats; worth: the most the gear was worth, in gp.
 	 */
-	static List<String> broken(Rules r, Map<String, Set<String>> worn, Collection<String> bag, Collection<String> bagSeen)
-	{
-		return broken(r, worn, bag, bagSeen, Collections.emptySet(), 0);
-	}
-
-	/** The same; statless: the names (key) of items without combat stats; worth: the most the gear was worth, in gp. */
 	static List<String> broken(Rules r, Map<String, Set<String>> worn, Collection<String> bag, Collection<String> bagSeen, Set<String> statless, long worth)
 	{
 		List<String> out = new ArrayList<>();
@@ -206,11 +201,6 @@ class KillRules
 		final boolean food;
 		final boolean potion;
 
-		Carried(String name, boolean food)
-		{
-			this(name, food, false);
-		}
-
 		Carried(String name, boolean food, boolean potion)
 		{
 			this.name = name;
@@ -291,23 +281,9 @@ class KillRules
 	}
 
 	/**
-	 * A kill of source: each goal of that monster takes it when it keeps to that goal's food rule. Returns the goals whose
-	 * rule it broke, with the food that broke it, for the chat warning.
-	 */
-	synchronized Map<Goal, String> kill(List<Goal> goals, String source, Collection<Carried> backpack, long time)
-	{
-		return kill(goals, source, backpack, Collections.emptyMap(), time);
-	}
-
-	/** The same, with what is worn now (slot -> item) for the gear rules. */
-	synchronized Map<Goal, String> kill(List<Goal> goals, String source, Collection<Carried> backpack, Map<String, String> worn, long time)
-	{
-		return kill(goals, source, backpack, worn, Collections.emptyList(), time);
-	}
-
-	/**
-	 * The same, with the team's random events: a kill that broke the rules of one running at the kill counts for no tile,
-	 * like a broken food rule (user, 2026-11-07).
+	 * A kill of source: each goal of that monster takes it when it keeps to that goal's food, potion and gear rules (worn:
+	 * slot -> item now). A kill that broke the rules of a random event running at the kill counts for no tile either
+	 * (user, 2026-11-07). Returns the goals whose rule it broke, with what broke it, for the chat warning.
 	 */
 	synchronized Map<Goal, String> kill(List<Goal> goals, String source, Collection<Carried> backpack, Map<String, String> worn, List<Event> events, long time)
 	{
@@ -390,6 +366,12 @@ class KillRules
 	synchronized boolean due(long time)
 	{
 		return now || (due != 0 && time >= due);
+	}
+
+	/** The kills of a goal not sent yet: a refetched goal's left does not have them (Kills.goals). */
+	synchronized int pending(String id)
+	{
+		return pending.getOrDefault(id, 0);
 	}
 
 	/** The kills waiting, per goal id; empties them. */
