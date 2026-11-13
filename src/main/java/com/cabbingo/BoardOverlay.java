@@ -1262,10 +1262,14 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	@Override
 	public void keyPressed(KeyEvent e)
 	{
-		if (e.getKeyCode() == KeyEvent.VK_ESCAPE && shown() && !gameWindow)
+		// a game window open: the setting closes the board along with it, else Escape is left to the game
+		if (e.getKeyCode() == KeyEvent.VK_ESCAPE && shown() && (!gameWindow || config.escapeCloses()))
 		{
 			open = false;
-			e.consume();
+			if (!gameWindow)
+			{
+				e.consume();
+			}
 		}
 	}
 
