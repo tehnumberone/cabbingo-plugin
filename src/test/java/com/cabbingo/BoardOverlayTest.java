@@ -16,7 +16,7 @@ public class BoardOverlayTest
 			+ "\"bonus\":[{\"title\":\"Day 2\",\"points\":5,\"img\":\"\",\"have\":1,\"need\":2,\"from\":1767312000000,\"to\":1767398400000}],"
 			+ "\"events\":[{\"title\":\"\",\"text\":\"No hats\",\"from\":1767312000000,\"to\":1767398400000}],"
 			+ "\"teams\":[{\"name\":\"A\",\"points\":12.5,\"own\":true},{\"name\":\"B\",\"points\":3}]}}";
-		CabbingoPlugin.Wants w = new Gson().fromJson(json, CabbingoPlugin.Wants.class);
+		Wants w = new Gson().fromJson(json, Wants.class);
 		assertEquals(3, w.board.size);
 		assertEquals(7, w.board.columnBonus, 0);
 		assertEquals("1st", BoardOverlay.ordinal(1));

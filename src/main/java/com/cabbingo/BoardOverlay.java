@@ -226,12 +226,12 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		return v == null ? fallback : v;
 	}
 
-	void show(Board board, String title, long end, List<CabbingoPlugin.Finished> finished)
+	void show(Board board, String title, long end, List<Finished> finished)
 	{
 		Map<String, Double> done = new HashMap<>();
 		if (finished != null)
 		{
-			for (CabbingoPlugin.Finished f : finished)
+			for (Finished f : finished)
 			{
 				if (f.id != null && (f.id.startsWith("row:") || f.id.startsWith("col:")) && !f.wait)
 				{
@@ -342,7 +342,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 			return null;
 		}
 		keepOut = sidePanel();
-		gameWindow = CabbingoPlugin.modalOpen(client);
+		gameWindow = Popups.modalOpen(client);
 		// drawn at the saved size, smaller while the game is too small for it (largestTile); a bigger game grows it back
 		int n = b.size, t = Math.min(tile, largestTile(b.size));
 		drawn = t;
