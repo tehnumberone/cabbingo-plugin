@@ -47,6 +47,7 @@ Nothing is sent before a Team URL is set, and nothing is sent anywhere else.
 | Always close board on ESC | ESC closes the board even while a game window is open. |
 | Board tile size | The size of a tile on the board. Dragging the board's edges changes it too. |
 | Board background | The colour of the board and its button. |
+| Download bingo board images | Off by default. Shows pictures the bingo owner uploaded on tiles; they can contain any imagery. Off: those tiles show their name. Items, bosses and skills always use the game's own icons. |
 
 ## Privacy
 

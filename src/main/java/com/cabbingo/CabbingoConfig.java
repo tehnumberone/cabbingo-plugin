@@ -186,6 +186,20 @@ public interface CabbingoConfig extends Config
 		return new Color(62, 53, 41, 245);
 	}
 
+	// off: a tile with a picture the owner uploaded shows its title; items, bosses and skills always use game sprites
+	@ConfigItem(
+		keyName = "downloadImages",
+		name = "Download bingo board images",
+		description = "Shows the pictures the bingo owner uploaded on your board's tiles. These are uploaded by the bingo owner and can contain any imagery. Off: those tiles show their name",
+		position = 12,
+		section = board,
+		warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by RuneLite developers"
+	)
+	default boolean downloadImages()
+	{
+		return false;
+	}
+
 	// the board's details column shows (the fold in its top bar, or Hide details / Show details on its right-click)
 	@ConfigItem(keyName = "showDetails", name = "", description = "", hidden = true)
 	default boolean showDetails()

@@ -44,6 +44,7 @@ import net.runelite.api.widgets.Widget;
 import net.runelite.client.config.ConfigManager;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.SpriteManager;
+import net.runelite.client.hiscore.HiscoreSkill;
 import net.runelite.client.input.KeyListener;
 import net.runelite.client.input.MouseListener;
 import net.runelite.client.input.MouseWheelListener;
@@ -185,6 +186,20 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	// the details column is laid out once on this to learn its height before the frame is drawn
 	private final Graphics2D measure = new BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB).createGraphics();
 	private static final Pattern ITEM = Pattern.compile("^/?item-images/(\\d+)\\.png$");
+	private static final String HISCORE = "hiscore:";
+	// RuneLite's hiscores entries by key(name), for the server's "hiscore:<TempleOSRS name>" pictures
+	private static final Map<String, HiscoreSkill> HISCORES = new HashMap<>();
+
+	static
+	{
+		for (HiscoreSkill s : HiscoreSkill.values())
+		{
+			HISCORES.put(key(s.getName()), s);
+		}
+		// TempleOSRS names that differ from the hiscores' beyond key()
+		HISCORES.put(key("Theatre of Blood Challenge Mode"), HiscoreSkill.THEATRE_OF_BLOOD_HARD_MODE);
+		HISCORES.put(key("Tombs of Amascut Expert"), HiscoreSkill.TOMBS_OF_AMASCUT_EXPERT);
+	}
 	private int picked = -1;
 	private Grab grab = Grab.NONE;
 	private java.awt.Point grabAt; // the mouse at the press
@@ -808,14 +823,33 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		g.drawRect(ex + 1, ey + 1, ew - 3, eh - 3);
 	}
 
-	// A tile's picture centred in the box; false while it loads or when there is none. An item picture is the game's own
-	// sprite, at its size or a whole multiple of it, so it stays sharp; any other is only ever scaled down.
+	// A name as HISCORES keys it: lower case letters and digits only, no leading "the"
+	static String key(String name)
+	{
+		String k = name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
+		return k.startsWith("the") ? k.substring(3) : k;
+	}
+
+	// The hiscores entry of a "hiscore:<name>" picture; null for any other picture or an unknown name
+	static HiscoreSkill hiscore(String img)
+	{
+		return img != null && img.startsWith(HISCORE) ? HISCORES.get(key(img.substring(HISCORE.length()))) : null;
+	}
+
+	// A tile's picture centred in the box; false while it loads or when there is none. Items, bosses and skills are the
+	// game's own sprites, at their size or a whole multiple of it, so they stay sharp; an uploaded picture is only
+	// downloaded with downloadImages on, and only ever scaled down.
 	private boolean drawPicture(Graphics2D g, String img, int bx, int by, int bw, int bh)
 	{
 		Matcher item = img == null ? null : ITEM.matcher(img);
-		if (item != null && item.matches())
+		HiscoreSkill hs = hiscore(img);
+		if (img != null && img.startsWith(HISCORE) || item != null && item.matches())
 		{
-			BufferedImage sprite = itemManager.getImage(Integer.parseInt(item.group(1)));
+			BufferedImage sprite = hs != null ? sprite(hs.getSpriteId()) : item.matches() ? itemManager.getImage(Integer.parseInt(item.group(1))) : null;
+			if (sprite == null)
+			{
+				return false;
+			}
 			int k = Math.min(bw / sprite.getWidth(), bh / sprite.getHeight());
 			if (k < 1 && bw > 0 && bh > 0)
 			{
@@ -833,7 +867,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, hint);
 			return true;
 		}
-		String link = link(img);
+		String link = config.downloadImages() ? link(img) : null;
 		if (link == null || bw <= 0 || bh <= 0)
 		{
 			return false;

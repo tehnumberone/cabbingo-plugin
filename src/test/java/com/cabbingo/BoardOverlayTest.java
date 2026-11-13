@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import net.runelite.client.hiscore.HiscoreSkill;
 import org.junit.Test;
 
 public class BoardOverlayTest
@@ -44,6 +45,31 @@ public class BoardOverlayTest
 		assertNull(BoardOverlay.link("https://evil.example/x.png"));
 		assertNull(BoardOverlay.link(""));
 		assertNull(BoardOverlay.link(null));
+	}
+
+	// every TempleOSRS skill and boss the server can send as "hiscore:<name>" (TEMPLE_SKILLS in models/temple.ts)
+	@Test
+	public void everyTemplePictureIsAGameSprite()
+	{
+		String[] names = {"Overall", "Attack", "Defence", "Strength", "Hitpoints", "Ranged", "Prayer", "Magic", "Cooking", "Woodcutting", "Fletching",
+			"Fishing", "Firemaking", "Crafting", "Smithing", "Mining", "Herblore", "Agility", "Thieving", "Slayer", "Farming", "Runecraft", "Hunter",
+			"Construction", "Sailing", "Abyssal Sire", "Alchemical Hydra", "Amoxliatl", "Araxxor", "Artio", "Barrows Chests", "Brutus", "Bryophyta",
+			"Callisto", "Calvar'ion", "Cerberus", "Chambers of Xeric", "Chambers of Xeric Challenge Mode", "Chaos Elemental", "Chaos Fanatic",
+			"Commander Zilyana", "Corporeal Beast", "Crazy Archaeologist", "Dagannoth Prime", "Dagannoth Rex", "Dagannoth Supreme",
+			"Deranged Archaeologist", "Doom of Mokhaiotl", "Duke Sucellus", "General Graardor", "Giant Mole", "Grotesque Guardians", "Hespori",
+			"Hueycoatl", "Kalphite Queen", "King Black Dragon", "Kraken", "Kree'arra", "K'ril Tsutsaroth", "Lunar Chests", "Mad Angel", "Maggot King",
+			"Mimic", "Nex", "Obor", "Phantom Muspah", "Phosani's Nightmare", "Sarachnis", "Scorpia", "Scurrius", "Shellbane Gryphon", "Skotizo",
+			"Sol Heredit", "Spindel", "Tempoross", "The Corrupted Gauntlet", "The Fractured Archive", "The Gauntlet", "The Leviathan", "The Nightmare",
+			"The Royal Titans", "The Whisperer", "Theatre of Blood", "Theatre of Blood Challenge Mode", "Thermonuclear Smoke Devil", "Tombs of Amascut",
+			"Tombs of Amascut Expert", "TzKal-Zuk", "TzTok-Jad", "Vardorvis", "Venenatis", "Vet'ion", "Vorkath", "Wintertodt", "Yama", "Zalcano", "Zulrah"};
+		for (String n : names)
+		{
+			assertTrue(n, BoardOverlay.hiscore("hiscore:" + n) != null);
+		}
+		assertEquals(HiscoreSkill.THEATRE_OF_BLOOD_HARD_MODE, BoardOverlay.hiscore("hiscore:Theatre of Blood Challenge Mode"));
+		assertEquals(HiscoreSkill.NIGHTMARE, BoardOverlay.hiscore("hiscore:The Nightmare"));
+		assertNull(BoardOverlay.hiscore("hiscore:Nobody"));
+		assertNull(BoardOverlay.hiscore("item-images/4151.png"));
 	}
 
 	@Test
