@@ -8,6 +8,7 @@ import java.awt.image.BufferedImage;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import javax.swing.SwingUtilities;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.SpriteID;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.input.MouseListener;
@@ -25,7 +26,7 @@ import net.runelite.client.ui.overlay.OverlayPosition;
 class BoardButton extends Overlay implements MouseListener
 {
 	private static final int SIZE = 36;
-	private static final int CABBAGE = 1965;
+	private static final int CABBAGE = ItemID.CABBAGE;
 
 	private final BoardOverlay board;
 	private final ItemManager itemManager;

@@ -1,5 +1,7 @@
 package com.cabbingo;
 
+import net.runelite.api.SoundEffectID;
+
 /**
  * The sound a finished tile plays: a jingle file in resources, or a game sound effect by id (the wiki's List of sound IDs).
  * The jingle files are game audio, turned into 22 kHz mono WAV: the Leagues and combat achievement ones from
@@ -19,7 +21,7 @@ public enum Sound
 	FANFARE("Fanfare", null, 2930, 2000),
 	FIREWORKS("Level up fireworks", null, 2396, 2000),
 	PUZZLE_COMPLETE("Puzzle complete", null, 3283, 2000),
-	GE_DING("Grand Exchange ding", null, 3925, 2000),
+	GE_DING("Grand Exchange ding", null, SoundEffectID.GE_ADD_OFFER_DINGALING, 2000),
 	COINS("Coins", null, 2119, 2000);
 
 	private final String label;

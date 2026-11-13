@@ -134,7 +134,7 @@ class Kills
 	@Subscribe
 	public void onPlayerLootReceived(PlayerLootReceived e)
 	{
-		loot(e.getPlayer().getName(), "PLAYER", e.getItems());
+		loot("a player", "PLAYER", e.getItems()); // never the other player's name: RuneLite's rules forbid sending it
 	}
 
 	// Raids, chests, clues and the rest the Loot Tracker sees. Its NPC, PLAYER and PICKPOCKET loot comes in above already.

@@ -24,7 +24,6 @@ import net.runelite.api.gameval.InterfaceID;
 import net.runelite.api.gameval.VarbitID;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetModalMode;
-import net.runelite.api.widgets.WidgetUtil;
 import net.runelite.client.audio.AudioPlayer;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.config.ConfigManager;
@@ -39,7 +38,7 @@ import net.runelite.client.util.Text;
 class Popups
 {
 	// The game's own popup (the collection log's "New item"): interface 660 over the game view, started by script 3343.
-	private static final int POPUP = 660;
+	private static final int POPUP = InterfaceID.NOTIFICATION_DISPLAY;
 	private static final int POPUP_SCRIPT = 3343;
 	private static final String SEEN = "seen";
 
@@ -196,7 +195,7 @@ class Popups
 		// tried 2026-11-02). Only what shows counts: an interface can stay loaded once it is gone (a
 		// Blast Furnace popup waited for minutes, 2026-11-02).
 		long now = System.currentTimeMillis();
-		String busy = popupNode != null ? "ours" : showing(POPUP, 1) ? "game popup" : showing(InterfaceID.WELCOME_SCREEN, 0) ? "welcome screen"
+		String busy = popupNode != null ? "ours" : showing(InterfaceID.NotificationDisplay.CONTAINER) ? "game popup" : showing(InterfaceID.WelcomeScreen.UNIVERSE) ? "welcome screen"
 			: modalOpen(client) ? "open window" : now < soundUntil ? "sound" : null;
 		if (busy != null)
 		{
@@ -213,11 +212,11 @@ class Popups
 		popupWaiting = 0;
 		Popup next = popups.poll();
 		log.debug("Cabbingo: popup {}", next.text);
-		int parent = !client.isResized() ? WidgetUtil.packComponentId(548, 42)
-			: client.getVarbitValue(VarbitID.RESIZABLE_STONE_ARRANGEMENT) == 1 ? WidgetUtil.packComponentId(164, 13)
-			: WidgetUtil.packComponentId(161, 13);
+		int parent = !client.isResized() ? InterfaceID.Toplevel.MAINCRM
+			: client.getVarbitValue(VarbitID.RESIZABLE_STONE_ARRANGEMENT) == 1 ? InterfaceID.ToplevelPreEoc.NOTIFICATIONS
+			: InterfaceID.ToplevelOsrsStretch.NOTIFICATIONS;
 		WidgetNode node = client.openInterface(parent, POPUP, WidgetModalMode.MODAL_CLICKTHROUGH);
-		Widget popup = client.getWidget(POPUP, 1);
+		Widget popup = client.getWidget(InterfaceID.NotificationDisplay.CONTAINER);
 		client.runScript(POPUP_SCRIPT, next.title, next.text, -1);
 		if (next.chat != null)
 		{
@@ -259,9 +258,9 @@ class Popups
 		return false;
 	}
 
-	private boolean showing(int group, int child)
+	private boolean showing(int componentId)
 	{
-		Widget w = client.getWidget(group, child);
+		Widget w = client.getWidget(componentId);
 		return w != null && !w.isHidden() && w.getWidth() > 0;
 	}
 

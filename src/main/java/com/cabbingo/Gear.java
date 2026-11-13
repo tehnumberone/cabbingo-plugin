@@ -17,6 +17,7 @@ import net.runelite.api.EquipmentInventorySlot;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
 import net.runelite.api.gameval.InventoryID;
+import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.client.game.ItemEquipmentStats;
 import net.runelite.client.game.ItemManager;
@@ -48,7 +49,7 @@ class Gear
 	}
 	// an event's icon that is an item picture: the infobox shows that item
 	private static final Pattern ITEM_ICON = Pattern.compile("item-images/(\\d+)\\.png$");
-	private static final int MYSTERY_BOX = 6199;
+	private static final int MYSTERY_BOX = ItemID.MACRO_QUIZ_MYSTERY_BOX;
 
 	private final Client client;
 	private final ItemManager itemManager;
