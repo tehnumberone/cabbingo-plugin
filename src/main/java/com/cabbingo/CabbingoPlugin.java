@@ -277,7 +277,7 @@ public class CabbingoPlugin extends Plugin
 		}
 		// the server checks the skilling counts up to here against TempleOSRS once it has this update (cheat mark)
 		sender.send(Sender.payload("LOGOUT", name, "", new JsonObject()), false);
-		if (gained <= 0)
+		if (gained <= 0 || !config.templeUpdate())
 		{
 			return;
 		}

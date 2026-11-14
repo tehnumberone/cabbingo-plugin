@@ -29,6 +29,19 @@ public interface CabbingoConfig extends Config
 		return "";
 	}
 
+	// TempleOSRS is a second 3rd-party server: off until the player turns it on (RuneLite's rule for such features)
+	@ConfigItem(
+		keyName = "templeUpdate",
+		position = 1,
+		name = "Update TempleOSRS on logout",
+		description = "Asks TempleOSRS to update your XP and kill counts when you log out during a bingo, for its XP and kill count tiles",
+		warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by RuneLite developers"
+	)
+	default boolean templeUpdate()
+	{
+		return false;
+	}
+
 	@ConfigSection(
 		name = "Sounds",
 		description = "Sounds for completed tiles",

@@ -31,13 +31,14 @@ Nothing is sent before a Team URL is set, and nothing is sent anywhere else.
 - Posts drops, kills, pets and skilling counts that count towards one of your team's tiles. A screenshot goes along when it matters; it goes to your team's Discord channel and never shows your private chat.
 - Shows a popup and plays a sound when one of your team's tiles, or its flipped side, is completed.
 - Adds a board button that opens your team's bingo board in the game.
-- On logout during a bingo, asks TempleOSRS to update your XP, unless RuneLite's XP Updater already does.
+- If turned on, asks TempleOSRS to update your XP on logout during a bingo, unless RuneLite's XP Updater already does.
 
 ## Settings
 
 | Setting | What it does |
 |---|---|
 | Team URL | Your team's URL from Drop setup on the Captains' board. |
+| Update TempleOSRS on logout | Off by default. Asks TempleOSRS to update your XP when you log out during a bingo, for XP and kill count tiles. |
 | Sound / Flipped tile sound | The sound for a completed tile or flipped side. |
 | Volume | Volume of the sounds. Game sounds follow your game's sound effect volume unless it is muted. |
 | Test sound / Test flipped tile sound | Plays the sound. |
@@ -51,7 +52,9 @@ Nothing is sent before a Team URL is set, and nothing is sent anywhere else.
 
 ## Privacy
 
-This plugin submits your IP address, your RuneScape name and your loot to a 3rd-party server not controlled or verified by the RuneLite developers.
+This plugin submits your IP address, your RuneScape name and your loot to a 3rd-party server not controlled or verified by the RuneLite developers. Screenshots of drops that count go on to your team's Discord channel through that server.
+
+With **Update TempleOSRS on logout** turned on (off by default), it also asks [TempleOSRS](https://templeosrs.com) to update your name when you log out during a bingo, which sends your IP address and RuneScape name to TempleOSRS.
 
 ## License
 
