@@ -2,7 +2,7 @@
 
 Sends your bingo drops, kills, pets and skilling progress to your team on [Cabbingo](https://www.cabbingo.com), and shows a popup with a sound when one of your team's tiles is completed.
 
-This plugin was made to make creating and playing bingo's alot easier. You set up your bingo board on the site, you use the team url to link your client to your team, and it uses your RSN to compare against a whitelist of that bingo board. This way you got an immersive experience, bingo board ingame, you get an item for a tile and you complete it? skadoosh: pop up with tile completed to everyone in your team!
+This plugin was made to make creating and playing bingos a lot easier. You set up your bingo board on the site, you use the team url to link your client to your team, and it uses your RSN to compare against a whitelist of that bingo board. This way you got an immersive experience, bingo board ingame, you get an item for a tile and you complete it? You see a pop up with tile completed to everyone in your team!
 
 ## Setup
 
