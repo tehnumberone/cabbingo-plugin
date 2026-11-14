@@ -648,7 +648,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		g.fillRect(tx, ty, size, size);
 		// p: the inside margin, less on a small tile; a title without a picture only where it can be read
 		int p = size >= 40 ? 4 : 2, bar = Math.max(p, size / 12);
-		if (!drawPicture(g, t.img, tx + p, ty + p, size - 2 * p, size - bar - 2 * p - 2) && size >= 30)
+		if (!drawPicture(g, t.img, (int) Math.min(Integer.MAX_VALUE, Math.max(1, t.need)), tx + p, ty + p, size - 2 * p, size - bar - 2 * p - 2) && size >= 30)
 		{
 			g.setFont(FontManager.getRunescapeSmallFont());
 			wrap(g, t.title, tx + 4, ty + 13, size - 8, ty + size - bar - 6);
@@ -837,34 +837,31 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	}
 
 	// A tile's picture centred in the box; false while it loads or when there is none. Items, bosses and skills are the
-	// game's own sprites, at their size or a whole multiple of it, so they stay sharp; an uploaded picture is only
-	// downloaded with downloadImages on, and only ever scaled down.
-	private boolean drawPicture(Graphics2D g, String img, int bx, int by, int bw, int bh)
+	// game's own sprites, each fitted to the box, so every tile's picture grows and shrinks with the tile size; an item
+	// shows as the stack of the tile's count (many pearls for 700 pearls), without the number. An uploaded picture is
+	// only downloaded with downloadImages on, and only ever scaled down.
+	private boolean drawPicture(Graphics2D g, String img, int quantity, int bx, int by, int bw, int bh)
 	{
 		Matcher item = img == null ? null : ITEM.matcher(img);
 		HiscoreSkill hs = hiscore(img);
 		if (img != null && img.startsWith(HISCORE) || item != null && item.matches())
 		{
-			BufferedImage sprite = hs != null ? sprite(hs.getSpriteId()) : item.matches() ? itemManager.getImage(Integer.parseInt(item.group(1))) : null;
-			if (sprite == null)
+			BufferedImage sprite = hs != null ? sprite(hs.getSpriteId()) : item.matches() ? itemManager.getImage(Integer.parseInt(item.group(1)), quantity, false) : null;
+			if (sprite == null || bw <= 0 || bh <= 0)
 			{
 				return false;
 			}
-			int k = Math.min(bw / sprite.getWidth(), bh / sprite.getHeight());
-			if (k < 1 && bw > 0 && bh > 0)
-			{
-				// a tile smaller than the sprite: scaled down smooth
-				double f = Math.min((double) bw / sprite.getWidth(), (double) bh / sprite.getHeight());
-				int sw = Math.max(1, (int) (sprite.getWidth() * f)), sh = Math.max(1, (int) (sprite.getHeight() * f));
-				g.drawImage(sprite, bx + (bw - sw) / 2, by + (bh - sh) / 2, sw, sh, null);
-				return true;
-			}
-			k = Math.max(1, k);
-			int sw = sprite.getWidth() * k, sh = sprite.getHeight() * k;
+			double f = Math.min((double) bw / sprite.getWidth(), (double) bh / sprite.getHeight());
+			int sw = Math.max(1, (int) (sprite.getWidth() * f)), sh = Math.max(1, (int) (sprite.getHeight() * f));
+			// always pixel-sharp, as the game draws them: smoothing only some (the ones off a whole multiple) looked blurry
+			// next to the sharp ones (user 2026-11-13)
 			Object hint = g.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
 			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 			g.drawImage(sprite, bx + (bw - sw) / 2, by + (bh - sh) / 2, sw, sh, null);
-			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, hint);
+			if (hint != null)
+			{
+				g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, hint);
+			}
 			return true;
 		}
 		String link = config.downloadImages() ? link(img) : null;
