@@ -10,7 +10,6 @@ import java.awt.Image;
 import java.awt.Polygon;
 import java.awt.Rectangle;
 import java.awt.RenderingHints;
-import java.awt.geom.RoundRectangle2D;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseWheelEvent;
@@ -473,21 +472,11 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		// close and the details column's fold, each lit while the mouse is over it (the areas a press takes, topButton)
 		net.runelite.api.Point mouse = client.getMouseCanvasPosition();
 		int over = mouse == null || grab != Grab.NONE ? 0 : topButton(mouse.getX() - x, mouse.getY() - y);
-		int cx = w - PAD - 22, fx = cx - 26, cy = 4;
-		BufferedImage close = sprite(over == 1 ? SpriteID.SteelborderCloseButton._1 : SpriteID.SteelborderCloseButton._0);
-		if (close != null)
-		{
-			java.awt.Shape clip = g.getClip();
-			g.clip(new RoundRectangle2D.Float(cx, cy, 22, 22, 6, 6));
-			g.drawImage(close, cx + 11 - close.getWidth() / 2, cy + 11 - close.getHeight() / 2, null);
-			g.setClip(clip);
-		}
-		else
-		{
-			button(g, cx, cy, over == 1);
-			g.drawLine(cx + 6, cy + 6, cx + 15, cy + 15);
-			g.drawLine(cx + 15, cy + 6, cx + 6, cy + 15);
-		}
+		// both drawn the same way, so they match and share one line; cy clears the top border
+		int cx = w - PAD - 22, fx = cx - 26, cy = 6;
+		button(g, cx, cy, over == 1);
+		g.drawLine(cx + 6, cy + 6, cx + 15, cy + 15);
+		g.drawLine(cx + 15, cy + 6, cx + 6, cy + 15);
 		button(g, fx, cy, over == 2);
 		// ">" pushes the column away, "<" pulls it out
 		int point = details ? fx + 14 : fx + 8, back = details ? fx + 8 : fx + 14;
