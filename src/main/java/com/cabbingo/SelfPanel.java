@@ -131,6 +131,8 @@ class SelfPanel extends PluginPanel
 		long end;
 		int rowBonus = 5;
 		String temple; // a TempleOSRS competition id: XP tiles count from TempleOSRS instead of the plugin
+		boolean skillShots; // Skilling screenshots to the team's Discord channel (Board.skillShots)
+		boolean kcShots = true; // Kill count screenshots to the team's Discord channel (Board.kcShots)
 		int columnBonus = 5;
 		List<Tile> tiles = new ArrayList<>();
 		List<SelfTeam> teams = new ArrayList<>();
@@ -248,6 +250,9 @@ class SelfPanel extends PluginPanel
 	private final Btn back = new Btn("", ORANGE, null, null);
 	private final JPanel tabs = new JPanel();
 	private final Text status = new Text("", RED);
+	// a save's answer, under the save button where the eye is (user, 2026-11-15); saving: fail() writes here
+	private final Text saveStatus = new Text("", GREEN);
+	private boolean saving;
 	private final JPanel body = new JPanel(new DynamicGridLayout(0, 1, 0, 8));
 
 	// where the panel is: the start (Bingos, Review) or a bingo's editor (Bingo, Tiles, Teams)
@@ -420,6 +425,7 @@ class SelfPanel extends PluginPanel
 			{
 				tab = n;
 				status.setText("");
+				saveStatus.setText("");
 				if ("Review".equals(n))
 				{
 					proofOpen = false;
@@ -441,9 +447,11 @@ class SelfPanel extends PluginPanel
 				break;
 			case "Tiles":
 				tilesView();
+				saveButton();
 				break;
 			case "Teams":
 				teamsView();
+				saveButton();
 				break;
 			case "Review":
 				if (proofOpen)
@@ -588,9 +596,9 @@ class SelfPanel extends PluginPanel
 		note.setFont(FontManager.getRunescapeSmallFont());
 		body.add(note);
 		body.add(field("TempleOSRS competition ID", text(form.temple == null ? "" : form.temple, v -> form.temple = v.trim().isEmpty() ? null : v.trim())));
-		Btn save = main(bingoId == null ? "Create bingo" : "Save changes");
-		save.addActionListener(e -> save());
-		body.add(save);
+		body.add(field("Skilling screenshots in Discord", onOff(form.skillShots, v -> form.skillShots = v)));
+		body.add(field("KC screenshots in Discord", onOff(form.kcShots, v -> form.kcShots = v)));
+		saveButton();
 		if (links.isEmpty())
 		{
 			return;
@@ -626,6 +634,16 @@ class SelfPanel extends PluginPanel
 		form.size = n;
 		form.tiles = tiles;
 		tileAt = -1;
+	}
+
+	// on every editor tab, so nobody takes a change for saved (user, 2026-11-15)
+	private void saveButton()
+	{
+		Btn save = main(bingoId == null ? "Create bingo" : "Save changes");
+		save.addActionListener(e -> save());
+		body.add(save);
+		saveStatus.setBorder(new EmptyBorder(2, 0, 0, 0));
+		body.add(saveStatus);
 	}
 
 	private void tilesView()
@@ -1243,6 +1261,7 @@ class SelfPanel extends PluginPanel
 
 	private void save()
 	{
+		saving = true; // its errors show under the button too
 		if (worker().isEmpty() || owner().isEmpty() || HttpUrl.parse(worker()) == null)
 		{
 			fail("Fill in the worker URL and owner passcode");
@@ -1269,15 +1288,18 @@ class SelfPanel extends PluginPanel
 		RequestBody json = RequestBody.create(JSON, gson.toJson(payload));
 		Request.Builder req = bingoId == null ? owned(worker() + "/self").post(json) : owned(worker() + "/self/" + bingoId).put(json);
 		status.setText("");
+		saveStatus.setText("");
+		saving = true;
 		call(req, Saved.class, s ->
 		{
+			saving = false;
 			bingoId = s.id;
 			form = s.form;
 			links = s.links;
 			savedJson = gson.toJson(form);
 			bingos = null;
-			status.setForeground(GREEN);
-			status.setText("Saved");
+			saveStatus.setForeground(GREEN);
+			saveStatus.setText("Saved");
 			render();
 		});
 	}
@@ -1400,8 +1422,10 @@ class SelfPanel extends PluginPanel
 
 	private void fail(String message)
 	{
-		status.setForeground(RED);
-		status.setText("<html>" + message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") + "</html>");
+		Text to = saving ? saveStatus : status;
+		saving = false;
+		to.setForeground(RED);
+		to.setText("<html>" + message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;") + "</html>");
 		revalidate();
 	}
 
@@ -1485,6 +1509,26 @@ class SelfPanel extends PluginPanel
 		p.add(new Text(name, ORANGE), BorderLayout.NORTH);
 		p.add(input, BorderLayout.CENTER);
 		return p;
+	}
+
+	// On / Off, drawn like the tile type buttons
+	private JPanel onOff(boolean value, java.util.function.Consumer<Boolean> set)
+	{
+		JPanel row = new JPanel(new GridLayout(1, 2, 3, 3));
+		row.setOpaque(false);
+		for (boolean v : new boolean[]{true, false})
+		{
+			boolean on = value == v;
+			Btn b = new Btn(v ? "On" : "Off", on ? GOLD : Color.WHITE, on ? SURFACE_HI : SURFACE, on ? GOLD : EDGE);
+			b.setPreferredSize(new Dimension(0, 28));
+			b.addActionListener(e ->
+			{
+				set.accept(v);
+				render();
+			});
+			row.add(b);
+		}
+		return row;
 	}
 
 	private static JPanel pair(JComponent a, JComponent b)

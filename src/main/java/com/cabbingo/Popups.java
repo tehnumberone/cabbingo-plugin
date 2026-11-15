@@ -138,10 +138,28 @@ class Popups
 	synchronized void finished(List<Finished> finished)
 	{
 		Set<String> ids = new HashSet<>();
+		// the board's last tile: "Bingo completed!" with the team's total after the tile, no row/column/diagonal popups
+		// (user, 2026-11-15)
+		boolean full = finishedSeen != null && !finishedSeen.contains("bingo") && finished.stream().anyMatch(f -> f.id.equals("bingo"));
+		if (full)
+		{
+			popups.removeIf(p -> p.id != null && isLine(p.id));
+		}
 		for (Finished f : finished)
 		{
 			ids.add(f.id);
-			if (finishedSeen != null && !finishedSeen.contains(f.id))
+			if (f.id.equals("bingo"))
+			{
+				if (full)
+				{
+					String total = f.points + (f.points == 1 ? " point" : " points");
+					popups.add(new Popup("Bingo completed!", "Total points: <col=ffffff>" + f.points + "</col>",
+						"<col=ef1020>Bingo completed!</col> Total points: " + total, false, f.id));
+					poppedAt.put(f.id, System.currentTimeMillis());
+				}
+				continue;
+			}
+			if (finishedSeen != null && !finishedSeen.contains(f.id) && !(full && isLine(f.id)))
 			{
 				String kind = f.id.startsWith("row:") ? "Row" : f.id.startsWith("col:") ? "Column" : f.id.startsWith("diag:") ? "Diagonal" : "Tile";
 				String name = Text.escapeJagex(f.title);
@@ -156,7 +174,7 @@ class Popups
 		}
 		// the welcome first, then tiles, then rows, then columns, queued ones too (user, 2026-11-03)
 		List<Popup> queued = new ArrayList<>(popups);
-		queued.sort(Comparator.comparingInt(p -> p.id == null ? 0 : p.id.startsWith("row:") ? 2 : p.id.startsWith("col:") ? 3 : p.id.startsWith("diag:") ? 4 : 1));
+		queued.sort(Comparator.comparingInt(p -> p.id == null ? 0 : p.id.startsWith("row:") ? 2 : p.id.startsWith("col:") ? 3 : p.id.startsWith("diag:") ? 4 : p.id.equals("bingo") ? 5 : 1));
 		popups.clear();
 		popups.addAll(queued);
 		log.debug("Cabbingo: finished {}, seen before {}", ids, finishedSeen);
@@ -165,6 +183,11 @@ class Popups
 			configManager.setConfiguration(CabbingoConfig.GROUP, SEEN, String.join(",", ids));
 		}
 		finishedSeen = ids;
+	}
+
+	private static boolean isLine(String id)
+	{
+		return id.startsWith("row:") || id.startsWith("col:") || id.startsWith("diag:");
 	}
 
 	private void unsee(String[] ids)

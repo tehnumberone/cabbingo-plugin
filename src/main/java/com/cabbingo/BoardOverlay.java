@@ -448,7 +448,9 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		Rectangle side = keepOut;
 		if (side != null && new Rectangle(x, y, w, h).intersects(side))
 		{
-			x = Math.max(0, side.x - w);
+			// left of it, or right of it when the left has no room (the window is at the screen's left edge)
+			int right = side.x + side.width;
+			x = side.x - w >= 0 ? side.x - w : right + w <= client.getCanvasWidth() ? right : 0;
 			getBounds().setLocation(x, y);
 		}
 		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -1310,7 +1312,8 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		Rectangle side = keepOut;
 		if (side != null)
 		{
-			cw = Math.min(cw, side.x); // so it always fits left of the side panel
+			// so it always fits beside the side panel, on its wider side
+			cw = Math.min(cw, Math.max(side.x, client.getCanvasWidth() - side.x - side.width));
 		}
 		int byWidth = (cw - 2 * PAD - (details() ? SIDE : -GAP)) / (n + 1) - GAP;
 		int byHeight = (ch - TOP - 2 * PAD + GAP) / (n + 1) - GAP;
