@@ -300,7 +300,7 @@ class Kills
 		goals.forEach(g -> left.put(g, g.left));
 		Map<KillRules.Goal, String> broke = killRules.kill(goals, source, backpack, gear.worn(), Gear.events(team.wants()), System.currentTimeMillis());
 		// the kills that counted show on the board window now; the server has them a minute later (KillBatch)
-		goals.stream().filter(g -> g.left < left.get(g)).forEach(g -> boardOverlay.counted(g.id));
+		goals.stream().filter(g -> g.left < left.get(g)).forEach(g -> boardOverlay.counted(g.id, 1));
 		log.debug("Cabbingo: kill of {}, kill count tiles {}, broke {}", source, goals.stream().map(g -> g.source + "/" + g.left).collect(Collectors.toList()), broke.values());
 		broke.forEach((g, why) ->
 			client.addChatMessage(ChatMessageType.GAMEMESSAGE, "",

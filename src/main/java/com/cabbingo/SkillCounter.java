@@ -43,12 +43,25 @@ class SkillCounter
 	// the proof of a tile only the plugin counts. The send goes out at once then too.
 	static class Goal
 	{
+		String id; // the side's, for the board window's live count (an older server sends none)
 		Set<String> items = new HashSet<>();
 		int left;
 		int[] marks;
 	}
 
 	private volatile List<Goal> goals = Collections.emptyList();
+	// what a counted item shows on the board window at once (side id, quantity): the server confirms it with the send
+	interface Live
+	{
+		void counted(String sideId, int quantity, String item);
+	}
+
+	private volatile Live live = (id, n, item) -> { };
+
+	void live(Live live)
+	{
+		this.live = live;
+	}
 	// Sent since the server's goals last changed: it renews them only when a side finishes, so after a send that
 	// finished nothing its numbers still count those items as missing (21 of 30 logs sent, 2026-11-02).
 	private final Map<String, Integer> sent = new HashMap<>();
@@ -84,6 +97,10 @@ class SkillCounter
 		counts.computeIfAbsent(skill, s -> new LinkedHashMap<>()).merge(item, quantity, Integer::sum);
 		before.forEach((goal, had) ->
 		{
+			if (goal.id != null)
+			{
+				live.counted(goal.id, quantity, item);
+			}
 			wantedAt = System.currentTimeMillis();
 			int now = counted(goal.items);
 			finishes |= goal.left > 0 && now >= goal.left;

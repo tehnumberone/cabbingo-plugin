@@ -1,12 +1,14 @@
 package com.cabbingo;
 
 import com.google.gson.JsonObject;
+import com.google.inject.Injector;
 import com.google.inject.Provides;
 import java.io.IOException;
 import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.EnumSet;
 import java.util.Set;
+import javax.swing.SwingUtilities;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
@@ -28,6 +30,8 @@ import net.runelite.client.input.MouseManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.task.Schedule;
+import net.runelite.client.ui.ClientToolbar;
+import net.runelite.client.ui.NavigationButton;
 import net.runelite.client.ui.JagexColors;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.util.ColorUtil;
@@ -77,6 +81,12 @@ public class CabbingoPlugin extends Plugin
 	// the board window and its button (2026-11-12)
 	@Inject private BoardOverlay boardOverlay;
 	@Inject private BoardButton boardButton;
+	// the self-hosted bingo's side panel (SelfPanel, 2026-11-14)
+	@Inject private Injector injector;
+	@Inject private ClientToolbar clientToolbar;
+	private SelfPanel selfPanel;
+	private NavigationButton selfButton;
+	private boolean selfShown;
 
 	// For the TempleOSRS update on logout: who played and their total XP when the session started (-1: none yet).
 	private String templeName;
@@ -96,11 +106,50 @@ public class CabbingoPlugin extends Plugin
 		mouseManager.registerMouseListener(boardButton);
 		keyManager.registerKeyListener(boardOverlay);
 		team.fetch();
+		SwingUtilities.invokeLater(() ->
+		{
+			selfPanel = injector.getInstance(SelfPanel.class);
+			selfButton = NavigationButton.builder().tooltip("Cabbingo bingo").icon(SelfPanel.icon()).priority(8).panel(selfPanel).build();
+			sidebar();
+		});
+	}
+
+	// The side panel: for an owner who turned it on, or a captain with a passcode (on Swing's thread)
+	private void sidebar()
+	{
+		if (selfButton == null)
+		{
+			return;
+		}
+		boolean on = config.selfPanel() || !config.captainPass().isBlank();
+		if (on != selfShown)
+		{
+			if (on)
+			{
+				clientToolbar.addNavigation(selfButton);
+			}
+			else
+			{
+				clientToolbar.removeNavigation(selfButton);
+			}
+			selfShown = on;
+		}
+		selfPanel.render();
 	}
 
 	@Override
 	protected void shutDown()
 	{
+		SwingUtilities.invokeLater(() ->
+		{
+			if (selfButton != null)
+			{
+				clientToolbar.removeNavigation(selfButton);
+			}
+			selfButton = null;
+			selfPanel = null;
+			selfShown = false;
+		});
 		kills.flush();
 		team.closePush();
 		team.onWants(w -> { });
@@ -155,6 +204,10 @@ public class CabbingoPlugin extends Plugin
 			popups.forget();
 			team.closePush();
 			team.fetch();
+		}
+		else if ("selfPanel".equals(e.getKey()) || "captainPass".equals(e.getKey()))
+		{
+			SwingUtilities.invokeLater(this::sidebar);
 		}
 		else if ("boardTile".equals(e.getKey()))
 		{

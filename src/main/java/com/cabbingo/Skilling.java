@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.inject.Inject;
@@ -52,11 +53,28 @@ class Skilling
 	private final Team team;
 	private final Gear gear;
 	private final Sender sender;
+	private final BoardOverlay boardOverlay;
 
 	private final SkillCounter skills = new SkillCounter();
 	private final Map<String, Integer> skillXp = new HashMap<>();
+	// A self-hosted bingo's XP tiles (2026-11-15): XP gained per skill since the last send, only for the skills its XP
+	// tiles count ("Overall": every skill's) and only while the player plays in the bingo. It shows on the board window
+	// at once (user: like kills and logs) and goes out with the skilling batch, at once when it finishes a tile.
+	static class XpGoal
+	{
+		String id; // the tile's
+		String skill;
+		int left; // XP still to go, as the server last counted
+	}
+
+	private final Map<String, Integer> xpGained = new HashMap<>();
+	private volatile List<XpGoal> xpGoals = Collections.emptyList();
+	private final Map<String, Integer> xpSince = new HashMap<>(); // per goal: XP gained since the server's numbers
+	private String xpRev;
+	private volatile boolean xpDue;
 	private Set<String> xpNow = new HashSet<>();
 	private Set<String> xpBefore = new HashSet<>();
+	private Set<String> xpEarlier = new HashSet<>();
 	private Map<Integer, Integer> backpack;
 	private Map<String, Integer> backpackGained = new HashMap<>();
 	private volatile String skillRsn;
@@ -70,8 +88,10 @@ class Skilling
 	private String herbOnXp;
 
 	@Inject
-	Skilling(Client client, ItemManager itemManager, Team team, Gear gear, Sender sender)
+	Skilling(Client client, ItemManager itemManager, Team team, Gear gear, Sender sender, BoardOverlay boardOverlay)
 	{
+		this.boardOverlay = boardOverlay;
+		skills.live(boardOverlay::counted);
 		this.client = client;
 		this.itemManager = itemManager;
 		this.team = team;
@@ -83,6 +103,19 @@ class Skilling
 	void goals(Wants w)
 	{
 		skills.goals(w == null || w.skill == null ? Collections.emptyList() : w.skill, w == null ? null : w.rev);
+		List<XpGoal> goals = w == null || w.xp == null ? Collections.emptyList() : w.xp;
+		synchronized (xpGained)
+		{
+			// new numbers from the server: they have what was sent, not what is still waiting to go
+			if (!java.util.Objects.equals(w == null ? null : w.rev, xpRev))
+			{
+				xpRev = w == null ? null : w.rev;
+				xpSince.clear();
+				int total = xpGained.values().stream().mapToInt(Integer::intValue).sum();
+				goals.forEach(g -> xpSince.put(g.id, "Overall".equals(g.skill) ? total : xpGained.getOrDefault(g.skill, 0)));
+			}
+			xpGoals = goals;
+		}
 	}
 
 	/** After a logout or hop, or with the plugin off: the next tick starts from scratch. */
@@ -92,6 +125,7 @@ class Skilling
 		backpackGained = new HashMap<>();
 		xpNow = new HashSet<>();
 		xpBefore = new HashSet<>();
+		xpEarlier = new HashSet<>();
 		sackBefore = -1;
 		barsBefore.clear();
 		herbVarbit = -1;
@@ -112,10 +146,17 @@ class Skilling
 			shots = skills.takeShots();
 			taken = skills.take();
 		}
+		Map<String, Integer> xp;
+		synchronized (xpGained)
+		{
+			xp = new HashMap<>(xpGained);
+			xpGained.clear();
+		}
 		if (rsn == null)
 		{
 			return;
 		}
+		sendXp(rsn, xp);
 		taken.forEach((skill, items) ->
 		{
 			JsonArray list = new JsonArray();
@@ -136,13 +177,42 @@ class Skilling
 		});
 	}
 
+	// The XP gained since the last send, per skill the bingo's XP tiles count, Overall the sum of all
+	private void sendXp(String rsn, Map<String, Integer> gained)
+	{
+		Set<String> wanted = new HashSet<>();
+		xpGoals.forEach(g -> wanted.add(g.skill));
+		JsonObject xp = new JsonObject();
+		int total = 0;
+		for (Map.Entry<String, Integer> e : gained.entrySet())
+		{
+			total += e.getValue();
+			if (wanted.contains(e.getKey()))
+			{
+				xp.addProperty(e.getKey(), e.getValue());
+			}
+		}
+		if (wanted.contains("Overall") && total > 0)
+		{
+			xp.addProperty("Overall", total);
+		}
+		if (xp.size() == 0)
+		{
+			return;
+		}
+		JsonObject extra = new JsonObject();
+		extra.add("xp", xp);
+		sender.send(Sender.payload("XP", rsn, "", extra), false);
+	}
+
 	/** Once a tick while the player plays in the bingo. */
 	void tick(String player)
 	{
 		skillRsn = player;
 		countSkilling();
-		if (skills.due(System.currentTimeMillis()))
+		if (skills.due(System.currentTimeMillis()) || xpDue)
 		{
+			xpDue = false;
 			send();
 		}
 	}
@@ -155,6 +225,32 @@ class Skilling
 		if (before != null && e.getXp() > before && SkillCounter.SKILLS.contains(skill))
 		{
 			xpNow.add(skill);
+		}
+		// (before is null for the stats the game sends at login: never counted as gained)
+		if (before == null || e.getXp() <= before || team.playing() == null || !gear.ruleLines().isEmpty())
+		{
+			return;
+		}
+		int gain = e.getXp() - before;
+		synchronized (xpGained)
+		{
+			boolean wanted = false;
+			for (XpGoal g : xpGoals)
+			{
+				if (!skill.equals(g.skill) && !"Overall".equals(g.skill))
+				{
+					continue;
+				}
+				wanted = true;
+				boardOverlay.counted(g.id, gain);
+				int since = xpSince.merge(g.id, gain, Integer::sum);
+				// the tile is done with this XP: the batch goes now, not at the next five minutes
+				xpDue |= g.left > 0 && since >= g.left && since - gain < g.left;
+			}
+			if (wanted)
+			{
+				xpGained.merge(skill, gain, Integer::sum);
+			}
 		}
 	}
 
@@ -234,14 +330,16 @@ class Skilling
 		return held;
 	}
 
-	// Once a tick: the backpack's gains a tick ago count for a skill that gained XP then or now (the two can come a
-	// tick apart).
+	// Once a tick: the backpack's gains a tick ago count for a skill that gained XP the tick before them, with them or
+	// the tick after (the two can come a tick apart either way). XP a tick early lost the last cooked karambwan of a run
+	// (user, 2026-11-15): every earlier one was saved by the next cook's XP.
 	private void countSkilling()
 	{
 		// gains while a random event's rule is broken count for no tile (user, 2026-11-07); the infobox says so
 		boolean ok = gear.ruleLines().isEmpty();
 		Map<Integer, Integer> now = backpack();
-		Set<String> around = new HashSet<>(xpBefore);
+		Set<String> around = new HashSet<>(xpEarlier);
+		around.addAll(xpBefore);
 		around.addAll(xpNow);
 		int region = client.getLocalPlayer() == null ? -1 : client.getLocalPlayer().getWorldLocation().getRegionID();
 		if (region == BLAST_FURNACE)
@@ -314,6 +412,7 @@ class Skilling
 		herbOnXp = xpNow.contains("Farming") ? herbBefore : null;
 		herbBefore = herbVarbit < 0 ? null : SkillCounter.herbAt(client.getVarbitValue(herbVarbit));
 		backpack = now;
+		xpEarlier = xpBefore;
 		xpBefore = xpNow;
 		xpNow = new HashSet<>();
 	}

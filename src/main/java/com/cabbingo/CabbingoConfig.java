@@ -42,10 +42,37 @@ public interface CabbingoConfig extends Config
 		return false;
 	}
 
+	// A self-hosted bingo (SelfPanel): the side panel where an owner makes the bingo on their own worker
+	@ConfigItem(
+		keyName = "selfPanel",
+		position = 2,
+		name = "Self-hosted bingo panel",
+		description = "Shows the side panel to make a bingo on your own Cabbingo worker",
+		warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by RuneLite developers"
+	)
+	default boolean selfPanel()
+	{
+		return false;
+	}
+
+	// a captain of a self-hosted bingo: the side panel's Review tab, on the Team URL's worker
+	@ConfigItem(
+		keyName = "captainPass",
+		position = 3,
+		name = "Captain passcode",
+		description = "Your team's captain passcode on a self-hosted bingo, to approve or deny your team's drops in the side panel",
+		secret = true,
+		warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by RuneLite developers"
+	)
+	default String captainPass()
+	{
+		return "";
+	}
+
 	@ConfigSection(
 		name = "Sounds",
 		description = "Sounds for completed tiles",
-		position = 1
+		position = 4
 	)
 	String sounds = "sounds";
 
@@ -114,7 +141,7 @@ public interface CabbingoConfig extends Config
 	@ConfigSection(
 		name = "Board",
 		description = "You can configure the appearance and behavior of your bingo board",
-		position = 2
+		position = 5
 	)
 	String board = "board";
 
@@ -218,6 +245,19 @@ public interface CabbingoConfig extends Config
 	default boolean showDetails()
 	{
 		return true;
+	}
+
+	// the self-hosted bingo's worker and owner passcode, as typed in the side panel (SelfPanel)
+	@ConfigItem(keyName = "selfWorker", name = "", description = "", hidden = true)
+	default String selfWorker()
+	{
+		return "";
+	}
+
+	@ConfigItem(keyName = "selfOwner", name = "", description = "", hidden = true, secret = true)
+	default String selfOwner()
+	{
+		return "";
 	}
 
 	// the start of the last bingo the player was welcomed to

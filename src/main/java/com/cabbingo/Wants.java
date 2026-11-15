@@ -23,6 +23,8 @@ class Wants
 	List<Finished> finished = new ArrayList<>(); // the tile sides the team finished
 	List<KillRules.Goal> kc = new ArrayList<>(); // kill count sides still open, with their food rules (2026-11-06)
 	List<KillRules.Event> events = new ArrayList<>(); // the team's random events with gear or inventory rules (2026-11-07)
+	// a self-hosted bingo's open XP tiles the plugin counts (none while TempleOSRS counts them, 2026-11-15)
+	List<Skilling.XpGoal> xp = new ArrayList<>();
 	BoardOverlay.Board board; // the in-game board; null for snakes and ladders or an older server (2026-11-12)
 	String rev; // the server's fingerprint of all this; every post's answer carries the current one (X-Rev)
 }

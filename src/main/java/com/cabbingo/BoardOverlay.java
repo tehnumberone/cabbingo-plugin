@@ -112,6 +112,16 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		boolean flipped;
 		String description;
 		List<String> rules;
+		List<Wanted> items; // the items it wants, each with what the team has (2026-11-15)
+		String counts; // what a count tile counts: "Vorkath kills", "Woodcutting XP"
+	}
+
+	/** An item a tile wants: what the team has of it and, when it has its own number, how many. */
+	static class Wanted
+	{
+		String name;
+		double have;
+		Double need;
 	}
 
 	static class Standing
@@ -166,9 +176,10 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	private volatile String title = "";
 	private volatile long end;
 	private volatile Map<String, Double> lines = Collections.emptyMap(); // done rows and columns (row:i, col:i) -> points
-	// Kills counted in the game that the server's board may not have yet (kills go out a minute late, KillBatch):
-	// side id -> {server's count at the first kill, kills since, time of the last}. Shown on top of the server's
-	// count until it reaches base + kills; forgotten 5 minutes after the last kill (a kill the server refused).
+	// Kills, skilling items and XP counted in the game that the server's board may not have yet (they go out in
+	// batches): side id, or side id + "\n" + item for an item's own row -> {server's count at the first, counted since,
+	// time of the last}. Shown on top of the server's count until it reaches base + counted; forgotten 5 minutes after
+	// the last (one the server refused).
 	private final Map<String, double[]> counted = new HashMap<>();
 	private static final long COUNTED_FOR = 5 * 60_000;
 	private boolean open;
@@ -264,12 +275,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 			{
 				double[] c = e.getValue();
 				boolean keep = board != null && now - c[2] < COUNTED_FOR;
-				for (Tile t : keep ? tiles(board, e.getKey()) : Collections.<Tile>emptyList())
-				{
-					keep &= !t.done && t.have < c[0] + c[1];
-					t.have = Math.max(t.have, Math.min(t.need, c[0] + c[1]));
-				}
-				return !keep;
+				return !(keep && apply(board, e.getKey(), c));
 			});
 		}
 		this.board = board;
@@ -293,26 +299,81 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		return out;
 	}
 
-	/** A kill that counts for a kill count side: shown on its tile now, before the server has it. */
-	void counted(String id)
+	/** A kill or XP that counts for a side: shown on its tile now, before the server has it. */
+	void counted(String id, double amount)
+	{
+		counted(id, amount, null);
+	}
+
+	/** An item that counts for a side: on its tile and on the item's own row (item null: the tile only). */
+	void counted(String id, double amount, String item)
 	{
 		Board b = board;
-		if (b == null)
-		{
-			return;
-		}
-		List<Tile> shown = tiles(b, id);
-		if (shown.isEmpty())
+		if (b == null || tiles(b, id).isEmpty())
 		{
 			return;
 		}
 		synchronized (counted)
 		{
-			double[] c = counted.computeIfAbsent(id, k -> new double[]{shown.get(0).have, 0, 0});
-			c[1]++;
-			c[2] = System.currentTimeMillis();
-			shown.forEach(t -> t.have = Math.max(t.have, Math.min(t.need, c[0] + c[1])));
+			for (String key : item == null ? List.of(id) : List.of(id, id + "\n" + item.toLowerCase(Locale.ROOT)))
+			{
+				Double have = have(b, key);
+				if (have == null)
+				{
+					continue;
+				}
+				double[] c = counted.computeIfAbsent(key, k -> new double[]{have, 0, 0});
+				c[1] += amount;
+				c[2] = System.currentTimeMillis();
+				apply(b, key, c);
+			}
 		}
+	}
+
+	// The server's count behind a counted key: the tile's, or an item row's; null when the board has no such thing
+	private static Double have(Board b, String key)
+	{
+		String[] k = key.split("\n", 2);
+		for (Tile t : tiles(b, k[0]))
+		{
+			if (k.length == 1)
+			{
+				return t.have;
+			}
+			for (Wanted w : t.items == null ? Collections.<Wanted>emptyList() : t.items)
+			{
+				if (w.name.equalsIgnoreCase(k[1]))
+				{
+					return w.have;
+				}
+			}
+		}
+		return null;
+	}
+
+	// Shows a counted key on the board (at most the number wanted); false once the server has it all or the tile is done
+	private static boolean apply(Board b, String key, double[] c)
+	{
+		String[] k = key.split("\n", 2);
+		boolean keep = false;
+		for (Tile t : tiles(b, k[0]))
+		{
+			if (k.length == 1)
+			{
+				keep |= !t.done && t.have < c[0] + c[1];
+				t.have = Math.max(t.have, Math.min(t.need, c[0] + c[1]));
+				continue;
+			}
+			for (Wanted w : t.items == null ? Collections.<Wanted>emptyList() : t.items)
+			{
+				if (w.name.equalsIgnoreCase(k[1]))
+				{
+					keep |= !t.done && w.have < c[0] + c[1];
+					w.have = Math.max(w.have, w.need == null ? c[0] + c[1] : Math.min(w.need, c[0] + c[1]));
+				}
+			}
+		}
+		return keep;
 	}
 
 	boolean isOpen()
@@ -482,7 +543,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 			int hover = tileAt(mx, my);
 			String tip = hover >= 0 && hover < b.tiles.size() ? b.tiles.get(hover).title
 				: column == null || !column.contains(mx, my) ? null : cuts.entrySet().stream().filter(c -> c.getKey().contains(mx, my)).map(Map.Entry::getValue).findFirst().orElse(null);
-			if (tip != null)
+			if (tip != null && !tip.isBlank())
 			{
 				tooltipManager.add(new Tooltip(tip));
 			}
@@ -563,6 +624,21 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		if (p.need > 0)
 		{
 			ly = line(g, "Progress", count(p.have) + " / " + count(p.need), sx, ly, sw);
+		}
+		if (p.counts != null && !p.counts.isEmpty())
+		{
+			ly = line(g, "Counts", p.counts, sx, ly, sw);
+		}
+		if (p.items != null && !p.items.isEmpty())
+		{
+			// each item the tile wants and what the team has of it (out of its own number, when it has one)
+			g.setFont(FontManager.getRunescapeBoldFont());
+			text(g, "Items", sx + 8, ly + 16, ORANGE);
+			ly += 20;
+			for (Wanted w : p.items)
+			{
+				ly = line(g, w.name, count(w.have) + (w.need == null ? "" : " / " + count(w.need)), sx, ly, sw, w.need != null && w.have >= w.need ? GREEN : CREAM);
+			}
 		}
 		ly = line(g, "Points", number(p.points), sx, ly, sw);
 		ly = line(g, "Status", p.done ? "Done" : p.wait ? "Needs approval" : p.flipped ? "Flipped" : "Open", sx, ly, sw);
