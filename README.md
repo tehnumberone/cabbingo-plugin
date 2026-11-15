@@ -26,6 +26,17 @@ The Team URL comes from your bingo's **Captains' board**. Each team has its own 
 
 Nothing is sent before a Team URL is set, and nothing is sent anywhere else.
 
+### Or host it yourself
+
+You can also run a bingo without the Cabbingo website. The bingo then lives on your own free Cloudflare account, on a worker that only you control.
+
+1. Put the worker online with the guide in [tehnumberone/cabbingo-worker](https://github.com/tehnumberone/cabbingo-worker). It takes about 15 minutes and needs no coding.
+2. In the plugin settings, tick **Self-hosted bingo panel**. A Cabbingo button shows up in the sidebar.
+3. In that panel, paste your worker URL and owner passcode, then press **New bingo**. Set the name, board size, dates, tiles and teams, and press **Create bingo**.
+4. Each team gets a **Team URL** for its players and a **Captain passcode** for its captain. Players paste the Team URL into the **Team URL** setting. Captains paste the passcode into **Captain passcode** to approve or deny their team's drops in the panel's **Review** tab.
+
+Kill count, skilling and XP tiles count by themselves. Drop tiles wait for a captain's approval.
+
 ## What it does
 
 - Posts drops, kills, pets and skilling counts that count towards one of your team's tiles. A screenshot goes along when it matters; it goes to your team's Discord channel and never shows your private chat.
@@ -38,6 +49,8 @@ Nothing is sent before a Team URL is set, and nothing is sent anywhere else.
 | Setting | What it does |
 |---|---|
 | Team URL | Your team's URL from Drop setup on the Captains' board. |
+| Self-hosted bingo panel | Shows the side panel to make a bingo on your own worker. |
+| Captain passcode | Your team's captain passcode on a self-hosted bingo. Shows the Review tab in the side panel. |
 | Update TempleOSRS on logout | Off by default. Asks TempleOSRS to update your XP when you log out during a bingo, for XP and kill count tiles. |
 | Sound / Flipped tile sound | The sound for a completed tile or flipped side. |
 | Volume | Volume of the sounds. Game sounds follow your game's sound effect volume unless it is muted. |
@@ -52,9 +65,14 @@ Nothing is sent before a Team URL is set, and nothing is sent anywhere else.
 
 ## Privacy
 
-This plugin submits your IP address, your RuneScape name and your loot to a 3rd-party server not controlled or verified by the RuneLite developers. Screenshots of drops that count go on to your team's Discord channel through that server.
+This plugin submits your IP address, your RuneScape name and your loot to a 3rd-party server not controlled or verified by the RuneLite developers: the server in your Team URL, which is Cabbingo's or, for a self-hosted bingo, the owner's own worker. Screenshots of drops that count go on to your team's Discord channel through that server.
 
 With **Update TempleOSRS on logout** turned on (off by default), it also asks [TempleOSRS](https://templeosrs.com) to update your name when you log out during a bingo, which sends your IP address and RuneScape name to TempleOSRS.
+
+## Credits
+
+- The Leagues task, Leagues relic and combat achievement jingles come from [hootisman/muted_level_jingles](https://github.com/hootisman/muted_level_jingles) (BSD 2-Clause).
+- The Karamja diary jingles come from the [OSRS Wiki](https://oldschool.runescape.wiki/w/Jingles).
 
 ## License
 
