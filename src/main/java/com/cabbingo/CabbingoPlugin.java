@@ -103,7 +103,7 @@ public class CabbingoPlugin extends Plugin
 		overlayManager.add(boardButton);
 		mouseManager.registerMouseListener(boardOverlay);
 		mouseManager.registerMouseWheelListener(boardOverlay);
-		mouseManager.registerMouseListener(boardButton);
+		mouseManager.registerMouseListener(boardButton.mouse);
 		keyManager.registerKeyListener(boardOverlay);
 		team.fetch();
 		SwingUtilities.invokeLater(() ->
@@ -160,7 +160,7 @@ public class CabbingoPlugin extends Plugin
 		overlayManager.remove(boardButton);
 		mouseManager.unregisterMouseListener(boardOverlay);
 		mouseManager.unregisterMouseWheelListener(boardOverlay);
-		mouseManager.unregisterMouseListener(boardButton);
+		mouseManager.unregisterMouseListener(boardButton.mouse);
 		keyManager.unregisterKeyListener(boardOverlay);
 		boardOverlay.show(null, null, 0, null);
 		team.clear();

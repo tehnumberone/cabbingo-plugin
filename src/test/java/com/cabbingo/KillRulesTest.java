@@ -50,6 +50,24 @@ public class KillRulesTest
 	}
 
 	@Test
+	public void aHarderRaidModeCountsForItsOwnTileAndTheRaids()
+	{
+		KillRules r = new KillRules();
+		KillRules.Goal raid = goal("t1", "Theatre of Blood", 5, null);
+		KillRules.Goal hard = goal("t2", "Theatre of Blood: Hard Mode", 5, null);
+		KillRules.Goal toa = goal("t3", "Tombs of Amascut Expert Mode", 5, null);
+		List<KillRules.Goal> goals = Arrays.asList(raid, hard, toa);
+
+		r.kill(goals, "Theatre of Blood", "Theatre of Blood Hard Mode", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 0);
+		assertEquals(4, raid.left);
+		assertEquals("matched on letters", 4, hard.left);
+		assertEquals(5, toa.left);
+		r.kill(goals, "Theatre of Blood", Collections.emptyList(), Collections.emptyMap(), Collections.emptyList(), 1000);
+		assertEquals(3, raid.left);
+		assertEquals("a normal raid is not the mode's", 4, hard.left);
+	}
+
+	@Test
 	public void killsCountPerGoalAndBrokenOnesAreSaid()
 	{
 		KillRules r = new KillRules();

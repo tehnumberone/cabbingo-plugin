@@ -379,17 +379,12 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 
 	boolean isOpen()
 	{
-		return shown();
+		return open && board != null && board.size > 0;
 	}
 
 	void toggle()
 	{
 		open = !open && board != null;
-	}
-
-	private boolean shown()
-	{
-		return open && board != null && board.size > 0;
 	}
 
 	// The window's size for a board of n by n at tile size t: the markers take one more row and column
@@ -414,7 +409,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	public Dimension render(Graphics2D g)
 	{
 		Board b = board;
-		if (!shown())
+		if (!isOpen())
 		{
 			return null;
 		}
@@ -677,23 +672,11 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		}
 		for (String para : s.split("\n"))
 		{
-			String line = "";
-			for (String word : para.split(" "))
+			for (String line : lines(m, para, width - indent))
 			{
-				String next = line.isEmpty() ? word : line + " " + word;
-				if (m.stringWidth(next) > width - indent && !line.isEmpty())
-				{
-					text(g, fit(g, line, width - indent), px + indent, py + 14, CREAM);
-					py += 15;
-					line = word;
-				}
-				else
-				{
-					line = next;
-				}
+				text(g, fit(g, line, width - indent), px + indent, py + 14, CREAM);
+				py += 15;
 			}
-			text(g, fit(g, line, width - indent), px + indent, py + 14, CREAM);
-			py += 15;
 		}
 		return py + 2;
 	}
@@ -1034,8 +1017,14 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 
 	private static void text(Graphics2D g, String s, int tx, int ty, Color c)
 	{
+		shadowed(g, s, tx, ty, c, 1);
+	}
+
+	// s with a black shadow off pixels down and right (the board window and the side panel)
+	static void shadowed(Graphics2D g, String s, int tx, int ty, Color c, int off)
+	{
 		g.setColor(Color.BLACK);
-		g.drawString(s, tx + 1, ty + 1);
+		g.drawString(s, tx + off, ty + off);
 		g.setColor(c);
 		g.drawString(s, tx, ty);
 	}
@@ -1051,8 +1040,8 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		return shown;
 	}
 
-	// s cut with "..." to fit width
-	private static String fit(Graphics2D g, String s, int width)
+	// s cut with "..." to fit width, in g's font
+	static String fit(Graphics2D g, String s, int width)
 	{
 		FontMetrics m = g.getFontMetrics();
 		if (m.stringWidth(s) <= width)
@@ -1069,20 +1058,34 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	// the title over a tile without a picture, word by word, as many lines as fit
 	private static void wrap(Graphics2D g, String s, int tx, int ty, int width, int bottom)
 	{
-		FontMetrics m = g.getFontMetrics();
+		List<String> lines = lines(g.getFontMetrics(), s, width);
+		for (int i = 0; i < lines.size(); i++)
+		{
+			String line = lines.get(i);
+			if (i < lines.size() - 1 && ty + 11 > bottom)
+			{
+				text(g, fit(g, line + "...", width), tx, ty, Color.WHITE);
+				return;
+			}
+			if (!line.isEmpty())
+			{
+				text(g, fit(g, line, width), tx, ty, Color.WHITE);
+			}
+			ty += 11;
+		}
+	}
+
+	// s's words in lines no wider than width (a word wider than that alone on its line)
+	private static List<String> lines(FontMetrics m, String s, int width)
+	{
+		List<String> out = new ArrayList<>();
 		String line = "";
 		for (String word : s.split(" "))
 		{
 			String next = line.isEmpty() ? word : line + " " + word;
 			if (m.stringWidth(next) > width && !line.isEmpty())
 			{
-				if (ty + 11 > bottom)
-				{
-					text(g, fit(g, line + "...", width), tx, ty, Color.WHITE);
-					return;
-				}
-				text(g, fit(g, line, width), tx, ty, Color.WHITE);
-				ty += 11;
+				out.add(line);
 				line = word;
 			}
 			else
@@ -1090,10 +1093,8 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 				line = next;
 			}
 		}
-		if (!line.isEmpty())
-		{
-			text(g, fit(g, line, width), tx, ty, Color.WHITE);
-		}
+		out.add(line);
+		return out;
 	}
 
 	static String number(double v)
@@ -1145,8 +1146,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 
 	private Grab grabAt(java.awt.Point p)
 	{
-		Board b = board;
-		if (!shown())
+		if (!isOpen())
 		{
 			return null;
 		}
@@ -1373,7 +1373,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	@Override
 	public MouseWheelEvent mouseWheelMoved(MouseWheelEvent e)
 	{
-		if (!shown() || e.isAltDown() || !new Rectangle(x, y, lastW, lastH).contains(e.getPoint()))
+		if (!isOpen() || e.isAltDown() || !new Rectangle(x, y, lastW, lastH).contains(e.getPoint()))
 		{
 			return e;
 		}
@@ -1395,7 +1395,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	public void keyPressed(KeyEvent e)
 	{
 		// a game window open: the setting closes the board along with it, else Escape is left to the game
-		if (e.getKeyCode() == KeyEvent.VK_ESCAPE && shown() && (!gameWindow || config.escapeCloses()))
+		if (e.getKeyCode() == KeyEvent.VK_ESCAPE && isOpen() && (!gameWindow || config.escapeCloses()))
 		{
 			open = false;
 			if (!gameWindow)

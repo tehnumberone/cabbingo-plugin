@@ -11,6 +11,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import javax.inject.Singleton;
@@ -47,6 +49,14 @@ class Kills
 		"You have a funny feeling like you would have been followed",
 	};
 	private static final String COLLECTION_LOG = "New item added to your collection log: ";
+	// A raid's harder modes, each with the raid the Loot Tracker names its chest after (it has no modes)
+	private static final String[][] RAID_MODES = {
+		{"Chambers of Xeric Challenge Mode", "Chambers of Xeric"},
+		{"Theatre of Blood Hard Mode", "Theatre of Blood"},
+		{"Tombs of Amascut Expert Mode", "Tombs of Amascut"},
+	};
+	// "Your completed Theatre of Blood: Hard Mode count is: 5." (RuneLite's chat commands read the same line)
+	private static final Pattern RAID_DONE = Pattern.compile("^Your completed (.+?) count is");
 
 	private final Client client;
 	private final ItemManager itemManager;
@@ -61,6 +71,8 @@ class Kills
 	private final KillBatch kills = new KillBatch();
 	// who made the kills that kept to a kill count tile's rules (KillRules)
 	private volatile String kcRsn;
+	// the mode of the raid the last completion message named (null: a normal raid), until that raid's chest comes in
+	private volatile String[] raidMode;
 	// A pet message waits a few ticks for the collection log line that names the pet.
 	private int petTicks = -1;
 	private String petName;
@@ -170,6 +182,13 @@ class Kills
 			return;
 		}
 		String text = e.getMessage();
+		Matcher done = RAID_DONE.matcher(Text.removeTags(text));
+		if (done.find())
+		{
+			String raid = KillRules.letters(done.group(1));
+			raidMode = Arrays.stream(RAID_MODES).filter(m -> KillRules.letters(m[0]).equals(raid)).findFirst().orElse(null);
+			return;
+		}
 		for (String pet : PET_MESSAGES)
 		{
 			if (text.startsWith(pet))
@@ -298,7 +317,17 @@ class Kills
 		kcRsn = rsn;
 		Map<KillRules.Goal, Integer> left = new HashMap<>();
 		goals.forEach(g -> left.put(g, g.left));
-		Map<KillRules.Goal, String> broke = killRules.kill(goals, source, backpack, gear.worn(), Gear.events(team.wants()), System.currentTimeMillis());
+		// a harder mode's chest also counts for that mode's tiles (and still for the raid's own)
+		String[] mode = raidMode;
+		if (mode != null && mode[1].equalsIgnoreCase(source.trim()))
+		{
+			raidMode = null;
+		}
+		else
+		{
+			mode = null;
+		}
+		Map<KillRules.Goal, String> broke = killRules.kill(goals, source, mode == null ? null : mode[0], backpack, gear.worn(), Gear.events(team.wants()), System.currentTimeMillis());
 		// the kills that counted show on the board window now; the server has them a minute later (KillBatch)
 		goals.stream().filter(g -> g.left < left.get(g)).forEach(g -> boardOverlay.counted(g.id, 1));
 		log.debug("Cabbingo: kill of {}, kill count tiles {}, broke {}", source, goals.stream().map(g -> g.source + "/" + g.left).collect(Collectors.toList()), broke.values());

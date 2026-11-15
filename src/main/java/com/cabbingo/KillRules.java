@@ -11,6 +11,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 import javax.inject.Singleton;
 
 // Kill count tiles (2026-11-06): kills of one monster that count only within the tile's food rule. On each kill of a
@@ -139,12 +140,7 @@ class KillRules
 
 	private static Set<String> keys(Collection<String> names)
 	{
-		Set<String> out = new HashSet<>();
-		for (String n : names)
-		{
-			out.add(key(n));
-		}
-		return out;
+		return names.stream().map(KillRules::key).collect(Collectors.toSet());
 	}
 
 	// what was worn and carried since the last kill, for the gear rules (saw, on every game tick)
@@ -287,11 +283,22 @@ class KillRules
 	 */
 	synchronized Map<Goal, String> kill(List<Goal> goals, String source, Collection<Carried> backpack, Map<String, String> worn, List<Event> events, long time)
 	{
+		return kill(goals, source, null, backpack, worn, events, time);
+	}
+
+	/**
+	 * The same, where the kill is also one of mode: a raid's harder mode ("Theatre of Blood Hard Mode"), whose chest the
+	 * Loot Tracker names as the normal raid. A goal of either takes it; mode is matched on its letters only, so
+	 * "Theatre of Blood: Hard Mode" fits too.
+	 */
+	synchronized Map<Goal, String> kill(List<Goal> goals, String source, String mode, Collection<Carried> backpack, Map<String, String> worn, List<Event> events, long time)
+	{
 		List<String> eventLines = eventsBroken(events, worn, names(backpack), time);
 		Map<Goal, String> broke = new LinkedHashMap<>();
 		for (Goal g : goals)
 		{
-			if (g.left <= 0 || g.source == null || !g.source.trim().equalsIgnoreCase(source.trim()) || time < g.from || (g.to > 0 && time >= g.to))
+			if (g.left <= 0 || g.source == null || !(g.source.trim().equalsIgnoreCase(source.trim()) || mode != null && letters(g.source).equals(letters(mode)))
+				|| time < g.from || (g.to > 0 && time >= g.to))
 			{
 				continue;
 			}
@@ -355,12 +362,7 @@ class KillRules
 
 	private static List<String> names(Collection<Carried> backpack)
 	{
-		List<String> out = new ArrayList<>();
-		for (Carried c : backpack)
-		{
-			out.add(c.name);
-		}
-		return out;
+		return backpack.stream().map(c -> c.name).collect(Collectors.toList());
 	}
 
 	synchronized boolean due(long time)
@@ -389,6 +391,11 @@ class KillRules
 	synchronized boolean shot()
 	{
 		return shot;
+	}
+
+	static String letters(String name)
+	{
+		return name.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]", "");
 	}
 
 	static String key(String name)

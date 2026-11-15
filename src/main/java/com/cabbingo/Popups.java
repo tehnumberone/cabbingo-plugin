@@ -100,7 +100,7 @@ class Popups
 	/** Popups not shown yet come again at the next start. */
 	void stop()
 	{
-		unsee(popups.stream().map(p -> p.id).filter(Objects::nonNull).toArray(String[]::new));
+		unsee(popups.stream().map(p -> p.id).filter(Objects::nonNull).toArray(String[]::new), Long.MAX_VALUE);
 		synchronized (this)
 		{
 			finishedSeen = null;
@@ -188,11 +188,6 @@ class Popups
 	private static boolean isLine(String id)
 	{
 		return id.startsWith("row:") || id.startsWith("col:") || id.startsWith("diag:");
-	}
-
-	private void unsee(String[] ids)
-	{
-		unsee(ids, Long.MAX_VALUE);
 	}
 
 	// only the sides that got no popup since before: the time a post was sent

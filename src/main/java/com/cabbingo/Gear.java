@@ -176,8 +176,7 @@ class Gear
 		boolean events = w != null && w.events != null && !w.events.isEmpty();
 		if (player == null || (!kcRules && !events))
 		{
-			ruleLines = Collections.emptyList();
-			setRuleBox(null, ruleLines);
+			clear();
 			return;
 		}
 		Map<String, String> worn = worn();

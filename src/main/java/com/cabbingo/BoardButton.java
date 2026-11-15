@@ -11,7 +11,7 @@ import javax.swing.SwingUtilities;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.SpriteID;
 import net.runelite.client.game.ItemManager;
-import net.runelite.client.input.MouseListener;
+import net.runelite.client.input.MouseAdapter;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
@@ -23,7 +23,7 @@ import net.runelite.client.ui.overlay.OverlayPosition;
  * "Open board on right-click only" a left click goes through it to the game.
  */
 @Singleton
-class BoardButton extends Overlay implements MouseListener
+class BoardButton extends Overlay
 {
 	private static final int SIZE = 36;
 	private static final int CABBAGE = ItemID.CABBAGE;
@@ -128,60 +128,40 @@ class BoardButton extends Overlay implements MouseListener
 		return board.hasBoard() && config.boardButton() && !covered && getBounds().contains(px, py);
 	}
 
-	@Override
-	public MouseEvent mousePressed(MouseEvent e)
+	// the button's clicks (the plugin registers it)
+	final MouseAdapter mouse = new MouseAdapter()
 	{
-		// only a left click, and not with right-click only: a right click opens the menu, the middle button turns the camera
-		ownPress = hovered(e.getX(), e.getY()) && !config.boardRightClick() && !e.isAltDown() && SwingUtilities.isLeftMouseButton(e);
-		if (ownPress)
+		@Override
+		public MouseEvent mousePressed(MouseEvent e)
 		{
-			board.toggle();
-			e.consume();
+			// only a left click, and not with right-click only: a right click opens the menu, the middle button turns the camera
+			ownPress = hovered(e.getX(), e.getY()) && !config.boardRightClick() && !e.isAltDown() && SwingUtilities.isLeftMouseButton(e);
+			if (ownPress)
+			{
+				board.toggle();
+				e.consume();
+			}
+			return e;
 		}
-		return e;
-	}
 
-	@Override
-	public MouseEvent mouseReleased(MouseEvent e)
-	{
-		if (ownPress && SwingUtilities.isLeftMouseButton(e))
+		@Override
+		public MouseEvent mouseReleased(MouseEvent e)
 		{
-			e.consume();
+			if (ownPress && SwingUtilities.isLeftMouseButton(e))
+			{
+				e.consume();
+			}
+			return e;
 		}
-		return e;
-	}
 
-	@Override
-	public MouseEvent mouseClicked(MouseEvent e)
-	{
-		if (ownPress && SwingUtilities.isLeftMouseButton(e))
+		@Override
+		public MouseEvent mouseClicked(MouseEvent e)
 		{
-			e.consume();
+			if (ownPress && SwingUtilities.isLeftMouseButton(e))
+			{
+				e.consume();
+			}
+			return e;
 		}
-		return e;
-	}
-
-	@Override
-	public MouseEvent mouseDragged(MouseEvent e)
-	{
-		return e;
-	}
-
-	@Override
-	public MouseEvent mouseMoved(MouseEvent e)
-	{
-		return e;
-	}
-
-	@Override
-	public MouseEvent mouseEntered(MouseEvent e)
-	{
-		return e;
-	}
-
-	@Override
-	public MouseEvent mouseExited(MouseEvent e)
-	{
-		return e;
-	}
+	};
 }

@@ -88,7 +88,7 @@ import okhttp3.Response;
 @Slf4j
 class SelfPanel extends PluginPanel
 {
-	static final String[] SKILLS = {"Cooking", "Crafting", "Farming", "Fishing", "Fletching", "Herblore", "Hunter", "Mining", "Runecraft", "Smithing", "Woodcutting"};
+	static final String[] SKILLS = SkillCounter.SKILLS.toArray(new String[0]);
 	// every skill an XP tile can count (TempleOSRS's skills, Overall too)
 	static final String[] XP_SKILLS = {"Overall", "Attack", "Defence", "Strength", "Hitpoints", "Ranged", "Prayer", "Magic", "Cooking", "Woodcutting",
 		"Fletching", "Fishing", "Firemaking", "Crafting", "Smithing", "Mining", "Herblore", "Agility", "Thieving", "Slayer", "Farming", "Runecraft",
@@ -418,10 +418,7 @@ class SelfPanel extends PluginPanel
 		tabs.setLayout(new GridLayout(1, names.size(), 3, 0));
 		for (String n : names)
 		{
-			boolean on = n.equals(tab);
-			Btn b = new Btn(n, on ? GOLD : Color.WHITE, on ? SURFACE_HI : SURFACE, on ? GOLD : EDGE);
-			b.setPreferredSize(new Dimension(0, 30));
-			b.addActionListener(e ->
+			tabs.add(choice(n, n.equals(tab), 30, () ->
 			{
 				tab = n;
 				status.setText("");
@@ -435,9 +432,7 @@ class SelfPanel extends PluginPanel
 				{
 					loadList();
 				}
-				render();
-			});
-			tabs.add(b);
+			}));
 		}
 		body.removeAll();
 		switch (tab)
@@ -536,20 +531,7 @@ class SelfPanel extends PluginPanel
 			body.add(card);
 		}
 		Btn create = main("New bingo");
-		create.addActionListener(e ->
-		{
-			form = blank();
-			savedJson = gson.toJson(form);
-			bingoId = null;
-			links = new ArrayList<>();
-			tileAt = -1;
-			teamAt = 0;
-			editing = true;
-			tab = "Bingo";
-			status.setText("");
-			loadNames(worker());
-			render();
-		});
+		create.addActionListener(e -> edit(null, blank(), new ArrayList<>()));
 		body.add(create);
 	}
 
@@ -697,15 +679,7 @@ class SelfPanel extends PluginPanel
 		for (int k = 0; k < TYPES.length; k++)
 		{
 			String type = TYPES[k];
-			boolean on = type.equals(t.type);
-			Btn b = new Btn(TYPE_NAMES[k], on ? GOLD : Color.WHITE, on ? SURFACE_HI : SURFACE, on ? GOLD : EDGE);
-			b.setPreferredSize(new Dimension(0, 28));
-			b.addActionListener(e ->
-			{
-				t.type = type;
-				render();
-			});
-			types.add(b);
+			types.add(choice(TYPE_NAMES[k], type.equals(t.type), 28, () -> t.type = type));
 		}
 		body.add(types);
 		body.add(field("Title", text(t.title, v ->
@@ -715,15 +689,7 @@ class SelfPanel extends PluginPanel
 		})));
 		if ("xp".equals(t.type))
 		{
-			JComboBox<String> skill = new JComboBox<>(XP_SKILLS);
-			style(skill);
-			if (t.skill == null || !List.of(XP_SKILLS).contains(t.skill))
-			{
-				t.skill = "Overall";
-			}
-			skill.setSelectedItem(t.skill);
-			skill.addActionListener(e -> t.skill = (String) skill.getSelectedItem());
-			body.add(field("Skill", skill));
+			skillBox(t, XP_SKILLS, "Overall");
 		}
 		else if ("kc".equals(t.type))
 		{
@@ -735,15 +701,7 @@ class SelfPanel extends PluginPanel
 		{
 			if ("skill".equals(t.type))
 			{
-				JComboBox<String> skill = new JComboBox<>(SKILLS);
-				style(skill);
-				if (t.skill == null || !List.of(SKILLS).contains(t.skill))
-				{
-					t.skill = SKILLS[SKILLS.length - 1];
-				}
-				skill.setSelectedItem(t.skill);
-				skill.addActionListener(e -> t.skill = (String) skill.getSelectedItem());
-				body.add(field("Skill", skill));
+				skillBox(t, SKILLS, SKILLS[SKILLS.length - 1]);
 			}
 			if (t.items == null)
 			{
@@ -765,6 +723,20 @@ class SelfPanel extends PluginPanel
 			}));
 		}
 		body.add(pair(field("kc".equals(t.type) ? "Kills" : "xp".equals(t.type) ? "XP" : "Count", number(t.count, v -> t.count = v)), field("Points", number(t.points, v -> t.points = v))));
+	}
+
+	// the tile's Skill dropdown; a skill not in skills becomes fallback
+	private void skillBox(Tile t, String[] skills, String fallback)
+	{
+		JComboBox<String> skill = new JComboBox<>(skills);
+		style(skill);
+		if (t.skill == null || !List.of(skills).contains(t.skill))
+		{
+			t.skill = fallback;
+		}
+		skill.setSelectedItem(t.skill);
+		skill.addActionListener(e -> t.skill = (String) skill.getSelectedItem());
+		body.add(field("Skill", skill));
 	}
 
 	private String gridLabel(int i)
@@ -1221,20 +1193,23 @@ class SelfPanel extends PluginPanel
 
 	private void open(int id)
 	{
-		call(owned(worker() + "/self/" + id), Saved.class, s ->
-		{
-			bingoId = s.id;
-			form = s.form;
-			links = s.links;
-			savedJson = gson.toJson(form);
-			tileAt = -1;
-			teamAt = 0;
-			editing = true;
-			tab = "Bingo";
-			status.setText("");
-			loadNames(worker());
-			render();
-		});
+		call(owned(worker() + "/self/" + id), Saved.class, s -> edit(s.id, s.form, s.links));
+	}
+
+	// the editor on this bingo (id null: a new one, not created yet)
+	private void edit(Integer id, Form f, List<Link> l)
+	{
+		bingoId = id;
+		form = f;
+		links = l;
+		savedJson = gson.toJson(form);
+		tileAt = -1;
+		teamAt = 0;
+		editing = true;
+		tab = "Bingo";
+		status.setText("");
+		loadNames(worker());
+		render();
 	}
 
 	// the site's item and monster lists, once
@@ -1289,7 +1264,6 @@ class SelfPanel extends PluginPanel
 		Request.Builder req = bingoId == null ? owned(worker() + "/self").post(json) : owned(worker() + "/self/" + bingoId).put(json);
 		status.setText("");
 		saveStatus.setText("");
-		saving = true;
 		call(req, Saved.class, s ->
 		{
 			saving = false;
@@ -1512,23 +1486,28 @@ class SelfPanel extends PluginPanel
 	}
 
 	// On / Off, drawn like the tile type buttons
-	private JPanel onOff(boolean value, java.util.function.Consumer<Boolean> set)
+	private JPanel onOff(boolean value, Consumer<Boolean> set)
 	{
 		JPanel row = new JPanel(new GridLayout(1, 2, 3, 3));
 		row.setOpaque(false);
 		for (boolean v : new boolean[]{true, false})
 		{
-			boolean on = value == v;
-			Btn b = new Btn(v ? "On" : "Off", on ? GOLD : Color.WHITE, on ? SURFACE_HI : SURFACE, on ? GOLD : EDGE);
-			b.setPreferredSize(new Dimension(0, 28));
-			b.addActionListener(e ->
-			{
-				set.accept(v);
-				render();
-			});
-			row.add(b);
+			row.add(choice(v ? "On" : "Off", value == v, 28, () -> set.accept(v)));
 		}
 		return row;
+	}
+
+	// a button of a pick-one row (tabs, tile types, On / Off), gold while picked; a click picks it and redraws the panel
+	private Btn choice(String label, boolean on, int height, Runnable picked)
+	{
+		Btn b = new Btn(label, on ? GOLD : Color.WHITE, on ? SURFACE_HI : SURFACE, on ? GOLD : EDGE);
+		b.setPreferredSize(new Dimension(0, height));
+		b.addActionListener(e ->
+		{
+			picked.run();
+			render();
+		});
+		return b;
 	}
 
 	private static JPanel pair(JComponent a, JComponent b)
@@ -1701,13 +1680,13 @@ class SelfPanel extends PluginPanel
 			}
 			g.setFont(getFont());
 			FontMetrics fm = g.getFontMetrics();
-			String t = fit(s, fm, getWidth() - in.right - x);
+			String t = BoardOverlay.fit(g, s, getWidth() - in.right - x);
 			if (getHorizontalAlignment() == SwingConstants.RIGHT || getHorizontalAlignment() == SwingConstants.TRAILING)
 			{
 				x = getWidth() - in.right - fm.stringWidth(t);
 			}
 			int y = in.top + (getHeight() - in.top - in.bottom - fm.getHeight()) / 2 + fm.getAscent();
-			shadowed(g, t, x, y, getForeground(), 1);
+			BoardOverlay.shadowed(g, t, x, y, getForeground(), 1);
 			g.dispose();
 		}
 	}
@@ -1775,11 +1754,11 @@ class SelfPanel extends PluginPanel
 				g.setFont(getFont());
 				FontMetrics fm = g.getFontMetrics();
 				Insets in = getInsets();
-				String t = fit(s, fm, w - in.left - in.right);
+				String t = BoardOverlay.fit(g, s, w - in.left - in.right);
 				int x = getHorizontalAlignment() == SwingConstants.LEFT ? in.left : (w - fm.stringWidth(t)) / 2;
 				int y = (h - fm.getHeight()) / 2 + fm.getAscent();
 				Color color = hover && image == null && fill == null && !Color.WHITE.equals(getForeground()) ? GOLD : getForeground();
-				shadowed(g, t, x, y, image != null && hover ? GOLD : color, image != null ? 2 : 1);
+				BoardOverlay.shadowed(g, t, x, y, image != null && hover ? GOLD : color, image != null ? 2 : 1);
 			}
 			g.dispose();
 		}
@@ -1797,28 +1776,6 @@ class SelfPanel extends PluginPanel
 			int icon = getIcon() == null ? 0 : getIcon().getIconWidth();
 			return new Dimension(Math.max(text, icon) + in.left + in.right + 2, 26);
 		}
-	}
-
-	private static void shadowed(Graphics2D g, String t, int x, int y, Color color, int off)
-	{
-		g.setColor(Color.BLACK);
-		g.drawString(t, x + off, y + off);
-		g.setColor(color);
-		g.drawString(t, x, y);
-	}
-
-	private static String fit(String s, FontMetrics fm, int width)
-	{
-		if (fm.stringWidth(s) <= width)
-		{
-			return s;
-		}
-		String t = s;
-		while (t.length() > 1 && fm.stringWidth(t + "...") > width)
-		{
-			t = t.substring(0, t.length() - 1);
-		}
-		return t + "...";
 	}
 
 	// Drawn icons: the Back chevron, the delete trashcan, a Reviewed row's closed and open arrow
