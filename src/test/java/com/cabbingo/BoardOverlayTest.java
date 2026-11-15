@@ -91,4 +91,26 @@ public class BoardOverlayTest
 		img.setRGB(20, 25, 0xff00ff00);
 		assertEquals(new java.awt.Rectangle(4, 10, 17, 16), BoardButton.opaque(img));
 	}
+
+	// the picture box drawTile gives a tile of this size
+	private static double stepAt(int size)
+	{
+		int p = size >= 40 ? 4 : 2, bar = Math.max(p, size / 12);
+		return BoardOverlay.step(size - 2 * p, size - bar - 2 * p - 2);
+	}
+
+	@Test
+	public void iconSteps()
+	{
+		// one scale for all icons, jumping between sharp steps by tile size
+		assertEquals(2, stepAt(96), 0);
+		assertEquals(2, stepAt(80), 0);
+		assertEquals(1, stepAt(79), 0);
+		assertEquals(1, stepAt(46), 0);
+		assertEquals(0.75, stepAt(45), 0);
+		assertEquals(0.75, stepAt(32), 0);
+		assertEquals(0.5, stepAt(31), 0);
+		assertEquals(0.5, stepAt(24), 0);
+		assertEquals(0.25, stepAt(16), 0); // fits the box: 12 x 8
+	}
 }

@@ -55,6 +55,7 @@ import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 import net.runelite.client.ui.overlay.tooltip.Tooltip;
 import net.runelite.client.ui.overlay.tooltip.TooltipManager;
+import net.runelite.client.util.AsyncBufferedImage;
 import net.runelite.client.util.QuantityFormatter;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -136,7 +137,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	private static final int GAP = 6; // between tiles
 	private static final int SIDE = 220; // the details column
 	private static final int GRIP = 6; // how close to an edge a press scales
-	// MIN_TILE: a 10 x 10 board fits; under the item sprite's size (36 x 32) pictures are scaled down
+	// MIN_TILE: a 10 x 10 board fits; sprites are drawn at 2x from tile 80, 1x from 46, then 0.75x and 0.5x (step())
 	private static final int MIN_TILE = 16, MAX_TILE = 96, DEFAULT_TILE = 46;
 	private static final int MIN_COLUMN = 200; // the details column's least height in px, before it scrolls
 	private static final int BAR = 6; // room the scrollbar takes at the column's right, out of the content's way
@@ -224,6 +225,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	private final Map<String, BufferedImage> images = new ConcurrentHashMap<>();
 	private final Set<String> asked = ConcurrentHashMap.newKeySet();
 	private final Map<String, Image> scaled = new ConcurrentHashMap<>();
+	private final Map<BufferedImage, Image> shrunk = Collections.synchronizedMap(new WeakHashMap<>()); // sprites under 1x, at scaledSize
 	private int scaledSize;
 
 	@Inject
@@ -496,6 +498,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		if (t != scaledSize)
 		{
 			scaled.clear();
+			shrunk.clear();
 			scaledSize = t;
 		}
 		int gx = PAD + t + GAP, gy = TOP + PAD;
@@ -912,8 +915,22 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		return img != null && img.startsWith(HISCORE) ? HISCORES.get(key(img.substring(HISCORE.length()))) : null;
 	}
 
+	// The one scale of every sprite on the board: the largest step at which an item (36 x 32) fits the box, so all icons
+	// keep the game's size ratio and jump between sizes where they are sharp; under 0.5x they fit the box
+	static double step(int bw, int bh)
+	{
+		for (double s : new double[]{2, 1, 0.75, 0.5})
+		{
+			if (36 * s <= bw && 32 * s <= bh)
+			{
+				return s;
+			}
+		}
+		return Math.min(bw / 36.0, bh / 32.0);
+	}
+
 	// A tile's picture centred in the box; false while it loads or when there is none. Items, bosses and skills are the
-	// game's own sprites, each fitted to the box, so every tile's picture grows and shrinks with the tile size; an item
+	// game's own sprites, all at step(), so every tile's picture grows and shrinks with the tile size; an item
 	// shows as the stack of the tile's count (many pearls for 700 pearls), without the number. An uploaded picture is
 	// only downloaded with downloadImages on, and only ever scaled down.
 	private boolean drawPicture(Graphics2D g, String img, int quantity, int bx, int by, int bw, int bh)
@@ -927,10 +944,26 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 			{
 				return false;
 			}
-			double f = Math.min((double) bw / sprite.getWidth(), (double) bh / sprite.getHeight());
-			int sw = Math.max(1, (int) (sprite.getWidth() * f)), sh = Math.max(1, (int) (sprite.getHeight() * f));
-			// always pixel-sharp, as the game draws them: smoothing only some (the ones off a whole multiple) looked blurry
-			// next to the sharp ones (user 2026-11-13)
+			double f = step(bw, bh);
+			int sw = Math.max(1, (int) Math.round(sprite.getWidth() * f)), sh = Math.max(1, (int) Math.round(sprite.getHeight() * f));
+			if (f < 1)
+			{
+				// under the game's size no step is pixel-exact: every icon is area-averaged once at the same step, so none
+				// looks softer than its neighbours (user 2026-11-13, 2026-11-15)
+				Image small = shrunk.get(sprite);
+				if (small == null)
+				{
+					small = sprite.getScaledInstance(sw, sh, Image.SCALE_AREA_AVERAGING);
+					if (sprite instanceof AsyncBufferedImage)
+					{
+						((AsyncBufferedImage) sprite).onLoaded(() -> shrunk.remove(sprite)); // scaled again once the item loads
+					}
+					shrunk.put(sprite, small);
+				}
+				g.drawImage(small, bx + (bw - sw) / 2, by + (bh - sh) / 2, null);
+				return true;
+			}
+			// 1x and 2x: pixel-sharp, as the game draws them
 			Object hint = g.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
 			g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
 			g.drawImage(sprite, bx + (bw - sw) / 2, by + (bh - sh) / 2, sw, sh, null);
