@@ -246,10 +246,10 @@ public class CabbingoPlugin extends Plugin
 		}
 	}
 
-	// one of ours, below the game's left-click option
+	// one of ours, just below the game's left-click option (under Cancel when that is all), never the left click itself
 	private void menuEntry(String option, Runnable action)
 	{
-		client.getMenu().createMenuEntry(-1)
+		client.getMenu().createMenuEntry(-2) // -1 would be the top entry: the left click
 			.setOption(option)
 			.setTarget(ColorUtil.wrapWithColorTag("Bingo board", JagexColors.MENU_TARGET))
 			.setType(MenuAction.RUNELITE)

@@ -390,7 +390,13 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	// The window's size for a board of n by n at tile size t: the markers take one more row and column
 	private int width(int n, int t)
 	{
-		return PAD + (n + 1) * (t + GAP) + (details() ? SIDE : -GAP) + PAD;
+		return PAD + (n + markers()) * (t + GAP) + (details() ? SIDE : -GAP) + PAD;
+	}
+
+	// 1 while the row and column markers show: always with the details column, else unless turned off in the config
+	private int markers()
+	{
+		return details() || !config.hideMarkers() ? 1 : 0;
 	}
 
 	// the details column shows: switched by the top bar's fold or the window's right-click menu
@@ -416,12 +422,12 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		keepOut = sidePanel();
 		gameWindow = Popups.modalOpen(client);
 		// drawn at the saved size, smaller while the game is too small for it (largestTile); a bigger game grows it back
-		int n = b.size, t = Math.min(tile, largestTile(b.size));
+		int n = b.size, t = Math.min(tile, largestTile(b.size)), mk = markers();
 		drawn = t;
-		int sx = PAD + (n + 1) * (t + GAP), sy = TOP + PAD;
+		int sx = PAD + (n + mk) * (t + GAP), sy = TOP + PAD;
 		boolean details = details();
 		// the column is as tall as the grid, at least MIN_COLUMN (or its content, if shorter); the rest scrolls
-		int gridBottom = sy + (n + 1) * (t + GAP) - GAP;
+		int gridBottom = sy + (n + mk) * (t + GAP) - GAP;
 		int content = details ? side(measure, b, sx, sy, SIDE) : 0;
 		int bottom = details ? Math.max(gridBottom, Math.min(content, sy + MIN_COLUMN)) : gridBottom;
 		if (content > bottom)
@@ -487,8 +493,8 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 			shrunk.clear();
 			scaledSize = t;
 		}
-		int gx = PAD + t + GAP, gy = TOP + PAD;
-		for (int i = 0; i < n; i++)
+		int gx = PAD + mk * (t + GAP), gy = TOP + PAD;
+		for (int i = 0; i < n && mk == 1; i++)
 		{
 			marker(g, PAD, gy + i * (t + GAP), t, lines.get("row:" + i), b.rowBonus);
 			marker(g, gx + i * (t + GAP), gy + n * (t + GAP), t, lines.get("col:" + i), b.columnBonus);
@@ -1220,8 +1226,9 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		if (at == Grab.NONE)
 		{
 			int i = tileAt(lx, ly);
-			// a second click on it puts it back; a click outside a tile does too, unless turned off in the config
-			if (i >= 0 || config.unpickOutside())
+			// a second click on it puts it back; a click outside a tile does too, unless turned off in the config. Never a
+			// click in the details column: folding its sections or scrolling keeps the tile (heads is refilled each frame)
+			if (i >= 0 || config.unpickOutside() && (column == null || !column.contains(lx, ly)))
 			{
 				picked = i == picked ? -1 : i;
 			}
@@ -1237,7 +1244,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 	private int tileAt(int lx, int ly)
 	{
 		int n = board.size, step = drawn + GAP;
-		int gx = lx - (PAD + step), gy = ly - (TOP + PAD);
+		int gx = lx - (PAD + markers() * step), gy = ly - (TOP + PAD);
 		int cx = Math.floorDiv(gx, step), cy = Math.floorDiv(gy, step);
 		boolean in = gx >= 0 && gy >= 0 && cx < n && cy < n && gx % step < drawn && gy % step < drawn;
 		return in ? cy * n + cx : -1;
@@ -1276,7 +1283,7 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 		{
 			// scaling: the edge or corner moves by about one tile step per n + 1 pixels of drag, never past largestTile
 			int pull = grab == Grab.LEFT ? -dx : grab == Grab.RIGHT ? dx : grab == Grab.BOTTOM_LEFT ? (dy - dx) / 2 : (dx + dy) / 2;
-			tile = Math.max(MIN_TILE, Math.min(largestTile(n), grabTile + pull / (n + 1)));
+			tile = Math.max(MIN_TILE, Math.min(largestTile(n), grabTile + pull / (n + markers())));
 			if (grab == Grab.LEFT || grab == Grab.BOTTOM_LEFT)
 			{
 				x = r.x + r.width - width(n, tile); // the right edge stays
@@ -1315,8 +1322,8 @@ class BoardOverlay extends Overlay implements MouseListener, MouseWheelListener,
 			// so it always fits beside the side panel, on its wider side
 			cw = Math.min(cw, Math.max(side.x, client.getCanvasWidth() - side.x - side.width));
 		}
-		int byWidth = (cw - 2 * PAD - (details() ? SIDE : -GAP)) / (n + 1) - GAP;
-		int byHeight = (ch - TOP - 2 * PAD + GAP) / (n + 1) - GAP;
+		int byWidth = (cw - 2 * PAD - (details() ? SIDE : -GAP)) / (n + markers()) - GAP;
+		int byHeight = (ch - TOP - 2 * PAD + GAP) / (n + markers()) - GAP;
 		return Math.max(MIN_TILE, Math.min(MAX_TILE, Math.min(byWidth, byHeight)));
 	}
 

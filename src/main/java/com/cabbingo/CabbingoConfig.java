@@ -174,7 +174,7 @@ public interface CabbingoConfig extends Config
 	@ConfigItem(
 		keyName = "unpickOutside",
 		name = "Hide tile details on outside click",
-		description = "A click on the board outside a tile hides the picked tile's details",
+		description = "A click on the grid outside a tile hides the picked tile's details",
 		position = 8,
 		section = board
 	)
@@ -183,13 +183,26 @@ public interface CabbingoConfig extends Config
 		return true;
 	}
 
+	// the row markers left of the grid and the column markers under it; with the details shown they always show
+	@ConfigItem(
+		keyName = "hideMarkers",
+		name = "Hide row and column bonuses",
+		description = "With the details hidden, the board shows only its tiles",
+		position = 9,
+		section = board
+	)
+	default boolean hideMarkers()
+	{
+		return false;
+	}
+
 	// on: ESC closes the board and an open game window (bank, shop, settings) together; off: ESC closes the game
 	// window first, the board on the next press
 	@ConfigItem(
 		keyName = "escapeCloses",
 		name = "Always close board on ESC",
 		description = "ESC closes the bingo board even while a game window is open",
-		position = 9,
+		position = 10,
 		section = board
 	)
 	default boolean escapeCloses()
@@ -205,7 +218,7 @@ public interface CabbingoConfig extends Config
 		keyName = "boardTile",
 		name = "Board tile size",
 		description = "The size of a tile on your bingo board; dragging the board's edges and corners changes it too",
-		position = 10,
+		position = 11,
 		section = board
 	)
 	default int boardTile()
@@ -218,7 +231,7 @@ public interface CabbingoConfig extends Config
 		keyName = "background",
 		name = "Board background",
 		description = "The colour of your bingo board and its button",
-		position = 11,
+		position = 12,
 		section = board
 	)
 	default Color background()
@@ -231,7 +244,7 @@ public interface CabbingoConfig extends Config
 		keyName = "downloadImages",
 		name = "Download bingo board images",
 		description = "Shows the pictures the bingo owner uploaded on your board's tiles. These are uploaded by the bingo owner and can contain any imagery. Off: those tiles show their name",
-		position = 12,
+		position = 13,
 		section = board,
 		warning = "This feature submits your IP address to a 3rd-party server not controlled or verified by RuneLite developers"
 	)
